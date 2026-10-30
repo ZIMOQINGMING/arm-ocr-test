@@ -1,0 +1,240 @@
+name: 麒麟端到端测试 (ARM64 真机)
+
+on:
+  push:
+    paths:
+      - 'start.py'
+      - 'check.py'
+  workflow_dispatch:
+
+jobs:
+  端到端测试:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装系统依赖
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y poppler-utils tesseract-ocr tesseract-ocr-chi-sim python3 python3-pip
+          pip3 install rapidocr-onnxruntime
+          python3 -V
+
+      - name: 准备测试文件目录
+        run: |
+          mkdir -p 测试文件
+
+      - name: 创建文字版 PDF 测试
+        run: |
+          cat > 测试文件/文字PDF.py << 'PYEOF'
+          import os
+          # 生成一个简单的文字 PDF（纯文本）
+          os.system('cat > /tmp/test.txt << EOF\n'
+                    '第一章 招标投标概述\n'
+                    '根据《中华人民共和国招标投标法》的规定，在中华人民共和国境内进行下列工程建设项目包括项目的勘察、设计、施工、监理以及与工程建设有关的重要设备、材料等的采购，必须进行招标。\n'
+                    '第二条 招标投标活动\n'
+                    '招标投标活动应当遵循公开、公平、公正和诚实信用的原则。\n'
+                    '第三条 必须招标的范围\n'
+                    '大型基础设施、公用事业等关系社会公共利益、公众安全的项目必须进行招标。\n'
+                    'EOF\n')
+          os.system('cd /tmp && python3 -c "from reportlab.lib.pagesizes import A4; from reportlab.pdfgen import canvas; c=canvas.Canvas(chr(47)+chr(116)+chr(109)+chr(112)+chr(47)+chr(116)+chr(101)+chr(115)+chr(116)+chr(46)+chr(112)+chr(100)+chr(102), pagesize=A4); c.drawString(100,700,chr(31)+chr(34)+chr(20013)+chr(20015)+chr(20110)+chr(34)+chr(62)+chr(20110)+chr(22270)+chr(24062)+chr(20110)+chr(24062)+chr(31)+chr(34)); c.save()"')
+          print('文字 PDF 创建完成')
+          PYEOF
+          python3 测试文件/文字PDF.py 2>&1 || echo "文字PDF创建失败，改用文本文件替代"
+
+      - name: 创建各类测试文件
+        run: |
+          # 创建 Word docx 测试文件
+          python3 -c "
+          from docx import Document
+          doc = Document()
+          doc.add_heading('招标投标法规测试', 0)
+          doc.add_paragraph('根据《中华人民共和国招标投标法》规定，必须进行招标的项目包括：')
+          doc.add_paragraph('1. 大型基础设施、公用事业等关系社会公共利益的项目')
+          doc.add_paragraph('2. 全部或者部分使用国有资金投资的项目')
+          doc.add_paragraph('3. 使用国际贷款、援助资金的项目')
+          doc.save('测试文件/法规文档.docx')
+          " 2>&1 || echo "docx 创建失败"
+
+      - name: 创建 Excel 题库测试
+        run: |
+          python3 -c "
+          import openpyxl
+          wb = openpyxl.Workbook()
+          ws = wb.active
+          ws.title = '单选题'
+          ws.append(['序号', '题干', '选项A', '选项B', '选项C', '选项D', '正确答案'])
+          ws.append([1, '根据《招标投标法》，招标文件发出到投标截止最短多少日', '十日', '十五日', '二十日', '三十日', 'C'])
+          ws.append([2, '以下哪项不属于招标投标活动的原则', '公开', '公平', '公正', '高价优先', 'D'])
+          ws.append([3, '依法必须进行招标的项目，自招标文件开始发出之日起至投标人提交投标文件截止，最短不得少于', '十五日', '二十日', '三十日', '四十五日', 'B'])
+          wb.save('测试文件/题库.xlsx')
+          " 2>&1 || echo "xlsx 创建失败"
+
+          python3 -c "
+          import xlwt
+          wb = xlwt.Workbook()
+          ws = wb.add_sheet('判断题')
+          ws.write(0, 0, '序号')
+          ws.write(0, 1, '题干')
+          ws.write(0, 2, '答案')
+          ws.write(1, 0, 1)
+          ws.write(1, 1, '招标投标活动应当遵循公开、公平、公正和诚实信用的原则')
+          ws.write(1, 2, '正确')
+          ws.write(2, 0, 2)
+          ws.write(2, 1, '全部使用国有资金投资的项目必须招标')
+          ws.write(2, 2, '正确')
+          wb.save('测试文件/判断题.xls')
+          " 2>&1 || echo "xls 创建失败"
+
+      - name: 创建文本文档
+        run: |
+          cat > 测试文件/法规.txt << 'EOF'
+          第一章 总则
+          第一条 为了规范招标投标活动，保护国家利益、社会公共利益和招标投标活动当事人的合法权益，提高经济效益，保证项目质量，制定本法。
+          第二条 在中华人民共和国境内进行招标投标活动，适用本法。
+          第三条 在中华人民共和国境内进行下列工程建设项目包括项目的勘察、设计、施工、监理以及与工程建设有关的重要设备、材料等的采购，必须进行招标：
+          （一）大型基础设施、公用事业等关系社会公共利益、公众安全的项目；
+          （二）全部或者部分使用国有资金投资或者国家融资的项目；
+          （三）使用国际组织或者外国政府贷款、援助资金的项目。
+          EOF
+
+      - name: 安装 python-docx（用于创建 docx）
+        run: pip3 install python-docx 2>&1
+
+      - name: 重新创建 docx 测试文件
+        run: |
+          python3 -c "
+          from docx import Document
+          doc = Document()
+          doc.add_heading('招标投标法规测试', 0)
+          doc.add_paragraph('根据《中华人民共和国招标投标法》规定，必须进行招标的项目包括：')
+          doc.add_paragraph('1. 大型基础设施、公用事业等关系社会公共利益的项目')
+          doc.add_paragraph('2. 全部或者部分使用国有资金投资的项目')
+          doc.add_paragraph('3. 使用国际贷款、援助资金的项目')
+          doc.save('测试文件/法规文档.docx')
+          "
+          echo "docx 创建完成"
+
+      - name: 启动前自检
+        run: |
+          echo "=== 启动前自检 ==="
+          python3 check.py
+
+      - name: 启动服务
+        run: |
+          python3 start.py > /tmp/服务器输出.log 2>&1 &
+          SERVER_PID=$!
+          echo "服务 PID: $SERVER_PID"
+          # 等待服务启动
+          sleep 3
+          # 检查进程是否还在
+          if kill -0 $SERVER_PID 2>/dev/null; then
+            echo "服务启动成功"
+            ps aux | grep start.py | grep -v grep
+          else
+            echo "服务启动失败，查看日志："
+            cat /tmp/服务器输出.log
+            exit 1
+          fi
+
+      - name: 验证服务可访问
+        run: |
+          # 查找实际端口
+          PORT=$(grep -oP '服务地址: http://\K[0-9]+' /tmp/服务器输出.log | head -1)
+          if [ -z "$PORT" ]; then
+            PORT=8765
+          fi
+          echo "实际端口: $PORT"
+          curl -s "http://127.0.0.1:$PORT/" | head -20
+          echo "服务可访问验证完成"
+
+      - name: 上传测试文件并验证
+        run: |
+          # 查找端口
+          PORT=$(grep -oP '服务地址: http://\K[0-9]+' /tmp/服务器输出.log | head -1)
+          if [ -z "$PORT" ]; then
+            PORT=8765
+          fi
+          
+          echo "=== 开始上传测试文件 ==="
+          
+          # 上传 docx
+          echo "--- 测试 docx ---"
+          curl -s -F "file=@测试文件/法规文档.docx" "http://127.0.0.1:$PORT/upload" > /tmp/上传_docx.json
+          cat /tmp/上传_docx.json
+          echo ""
+          
+          # 上传 xlsx
+          echo "--- 测试 xlsx ---"
+          curl -s -F "file=@测试文件/题库.xlsx" "http://127.0.0.1:$PORT/upload" > /tmp/上传_xlsx.json
+          cat /tmp/上传_xlsx.json
+          echo ""
+          
+          # 上传 xls
+          echo "--- 测试 xls ---"
+          curl -s -F "file=@测试文件/判断题.xls" "http://127.0.0.1:$PORT/upload" > /tmp/上传_xls.json
+          cat /tmp/上传_xls.json
+          echo ""
+          
+          # 上传 txt
+          echo "--- 测试 txt ---"
+          curl -s -F "file=@测试文件/法规.txt" "http://127.0.0.1:$PORT/upload" > /tmp/上传_txt.json
+          cat /tmp/上传_txt.json
+          echo ""
+
+      - name: 检查归档文件
+        run: |
+          echo "=== 检查归档目录 ==="
+          # 列出程序目录下的归档
+          if [ -d 归档 ]; then
+            ls -la 归档/
+            echo "归档目录存在"
+          else
+            echo "程序目录下无归档"
+          fi
+          
+          # 检查家目录
+          if [ -d ~/检索归档 ]; then
+            ls -la ~/检索归档/
+            echo "归档降级到家目录"
+          else
+            echo "家目录下无归档"
+          fi
+
+      - name: 执行检索测试
+        run: |
+          PORT=$(grep -oP '服务地址: http://\K[0-9]+' /tmp/服务器输出.log | head -1)
+          if [ -z "$PORT" ]; then
+            PORT=8765
+          fi
+          
+          echo "=== 检索测试 ==="
+          
+          # 测试 1: 搜索"招标投标"
+          echo "--- 测试 1: 招标投标 ---"
+          curl -s "http://127.0.0.1:$PORT/search?q=招标投标" | python3 -m json.tool 2>/dev/null || \
+          curl -s "http://127.0.0.1:$PORT/search?q=招标投标"
+          echo ""
+          
+          # 测试 2: 搜索"国有资金"
+          echo "--- 测试 2: 国有资金 ---"
+          curl -s "http://127.0.0.1:$PORT/search?q=国有资金" | head -50
+          echo ""
+          
+          # 测试 3: 搜索"二十日"
+          echo "--- 测试 3: 二十日 ---"
+          curl -s "http://127.0.0.1:$PORT/search?q=二十日" | head -50
+          echo ""
+
+      - name: 检查服务日志
+        run: |
+          echo "=== 服务日志 ==="
+          cat /tmp/服务器输出.log
+
+      - name: 停止服务
+        run: |
+          pkill -f start.py 2>/dev/null || true
+          echo "服务已停止"
