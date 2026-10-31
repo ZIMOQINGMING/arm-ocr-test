@@ -962,6 +962,7 @@ class Handler(BaseHTTPRequestHandler):
                         'fuzzy': False,
                         'total': total,
                         'page': page,
+                        'ps': ps,
                         'result': formatted
                     }, ensure_ascii=False))
                     return
@@ -1223,6 +1224,11 @@ h1{font-size:20px;margin-bottom:4px;}
 <div id="panel-search" class="panel">
   <div class="searchbar"><input id="q" placeholder="输入关键词检索（空格分隔多关键词）"></div>
   <div class="stats" id="stats"></div>
+  <div id="pagination" style="display:none;justify-content:center;align-items:center;gap:8px;margin-bottom:16px;">
+    <button id="prevPage" onclick="goPage(currentPage-1)" style="padding:6px 14px;background:var(--accent);color:#fff;border:none;border-radius:6px;cursor:pointer;">上一页</button>
+    <span id="pageInfo" style="color:var(--sub);font-size:13px;min-width:100px;text-align:center;">第 1 页</span>
+    <button id="nextPage" onclick="goPage(currentPage+1)" style="padding:6px 14px;background:var(--accent);color:#fff;border:none;border-radius:6px;cursor:pointer;">下一页</button>
+  </div>
   <div id="results"><div class="empty">等待输入关键词…</div></div>
 </div>
 
@@ -1329,17 +1335,21 @@ async function deleteFile(name){
   }catch(e){alert('删除失败：'+e);}
 }
 
+var currentPage = 1;
+
 function highlight(line,terms){
   var out=esc(line);
   for(var i=0;i<terms.length;i++){var t=terms[i];
     if(!t)continue;out=out.split(esc(t)).join('<mark>'+esc(t)+'</mark>');}
   return out;
 }
-async function search(){
+async function search(page){
+  page = page || 1;
+  currentPage = page;
   var q=document.getElementById('q').value.trim();
   var res=document.getElementById('results'),stats=document.getElementById('stats');
-  if(!q){res.innerHTML='<div class="empty">等待输入关键词…</div>';stats.textContent='';return;}
-  var r=await fetch('/search?q='+encodeURIComponent(q));
+  if(!q){res.innerHTML='<div class="empty">等待输入关键词…</div>';stats.textContent='';document.getElementById('pagination').style.display='none';return;}
+  var r=await fetch('/search?q='+encodeURIComponent(q)+'&page='+encodeURIComponent(page));
   var data=await r.json();
   var arr=data.result||[];
   var terms=q.split(/\\s+/).filter(Boolean);
@@ -1357,8 +1367,26 @@ async function search(){
     }
     html+='</div></div>';
   }
-  stats.textContent='共 '+tf+' 个文件命中 '+th+' 处'+(data.fuzzy?'（未精确命中，已容错搜索，可能有 OCR 误差）':'');
+  var totalPg = data.page || 1;
+  var totalPs = data.ps || 20;
+  stats.textContent='共 '+tf+' 个文件命中 '+th+' 处'+(data.fuzzy?'（未精确命中，已容错搜索，可能有 OCR 误差）':'')+(data.total?' （共 '+data.total+' 条结果，第 '+totalPg+'/'+Math.ceil(data.total/totalPs)+' 页）':'');
   res.innerHTML=html||'<div class="empty">没有找到匹配的内容</div>';
+  // 更新分页控件
+  var pag=document.getElementById('pagination');
+  if(data.total && data.total > totalPs){
+    pag.style.display='flex';
+    document.getElementById('prevPage').disabled = (page<=1);
+    document.getElementById('nextPage').disabled = (page*totalPs >= data.total);
+    document.getElementById('pageInfo').textContent='第 '+page+'/'+Math.ceil(data.total/totalPs)+' 页';
+  } else {
+    pag.style.display='none';
+  }
+}
+function goPage(p){
+  if(p<1)return;
+  var q=document.getElementById('q').value.trim();
+  if(!q)return;
+  search(p);
 }
 document.getElementById('q').addEventListener('input',function(){clearTimeout(this._t);this._t=setTimeout(search,200);});
 
