@@ -40,6 +40,7 @@ jobs:
           ls -la "$WHEEL_DIR/"
           echo ""
           echo "=== 安装顺序（依赖优先）==="
+          pip install pip==23.0
           pip3 install --no-index --find-links="$WHEEL_DIR" --prefer-binary \
             numpy \
             onnxruntime \
@@ -155,3 +156,4 @@ jobs:
             evidence/
           retention-days: 7
 # Trigger: RapidOCR combo test run #5 (2026-10-31)
+
