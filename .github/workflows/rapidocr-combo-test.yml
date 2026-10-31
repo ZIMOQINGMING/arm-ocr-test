@@ -154,3 +154,4 @@ jobs:
             测试文件/
             evidence/
           retention-days: 7
+# Trigger: RapidOCR combo test run #5 (2026-10-31)
