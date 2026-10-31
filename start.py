@@ -6,16 +6,25 @@
 - 零第三方依赖：只用 Python 标准库 + 自带 poppler 绿色版 + 系统 tesseract
 - 启动：python3 start.py   （自动打开浏览器）
 """
-import os, sys, json, re, subprocess, zipfile, tempfile, shutil, threading, webbrowser
+import os, sys, json, re, subprocess, zipfile, tempfile, shutil, threading, webbrowser, hashlib
+from datetime import datetime
 from http.server import BaseHTTPRequestHandler
 from socketserver import ThreadingTCPServer
 from urllib.parse import urlparse, parse_qs, unquote
+from urllib.parse import quote as urlquote
 
 BASE = os.path.dirname(os.path.realpath(__file__))  # realpath 解析软链，避免符号链接启动时定位失效
 # 自带纯 Python 库目录（只有 xls 解析用到 xlrd，纯 Python、免安装、不联网）
 sys.path.insert(0, os.path.join(BASE, '_libs'))
+sys.path.insert(0, BASE)  # 引入 index_db 模块
+
 ARCHIVE = os.path.join(BASE, '归档')
 PORT = 8765
+
+# v2 归档结构：files/（原件）+ texts/（文本）+ archive.db（元数据）
+V2_ARCHIVE = os.path.join(os.path.expanduser('~'), '检索归档')
+V2_FILES = os.path.join(V2_ARCHIVE, 'files')
+V2_TEXTS = os.path.join(V2_ARCHIVE, 'texts')
 
 # 归档候选链：优先程序目录；写不进就依次降级到家目录、临时目录。
 # 目的：转换/ OCR 往往跑了几分钟甚至几十分钟，绝不能因为最后一步存盘失败让用户白等。
@@ -119,6 +128,60 @@ def _check_green_tools():
 
 _check_green_tools()
 del _check_green_tools  # 检测完不需要了
+
+# ---------- 全局索引管理器（T2/T3/T4 核心）----------
+DB_MANAGER = None
+
+def _init_index_manager():
+    """启动时初始化索引管理器。v2 归档不存在时自动从 v1 扫描重建。"""
+    global DB_MANAGER
+    try:
+        # 优先 v2 归档目录
+        for d in (V2_ARCHIVE,) + tuple(ARCHIVE_DIRS):
+            if d and os.path.isdir(d):
+                db_path = os.path.join(d, 'archive.db')
+                if os.path.exists(db_path):
+                    from index_db import init_archive_db
+                    DB_MANAGER = init_archive_db(d)
+                    print('[索引] 已加载索引数据库：%s' % db_path)
+                    return
+        # 无现有库：尝试从 v1 扫描重建
+        print('[索引] 无现有索引库，尝试从归档重建...')
+        os.makedirs(V2_FILES, exist_ok=True)
+        os.makedirs(V2_TEXTS, exist_ok=True)
+        from index_db import init_archive_db, file_sha256
+        DB_MANAGER = init_archive_db(V2_ARCHIVE)
+        _scan_v1_to_v2()
+        print('[索引] 重建完成。')
+    except Exception as e:
+        print('[警告] 索引初始化失败：%s（将回退到基线文件扫描）' % e)
+        DB_MANAGER = None
+
+def _scan_v1_to_v2():
+    """扫描 v1 归档目录，重建 v2 结构 + 索引。"""
+    if not DB_MANAGER:
+        return
+    for d in ARCHIVE_DIRS:
+        if not os.path.isdir(d):
+            continue
+        try:
+            for f in os.listdir(d):
+                if f.endswith('.txt'):
+                    fp = os.path.join(d, f)
+                    orig_name = os.path.splitext(f)[0] + '.orig'
+                    orig_path = os.path.join(V2_FILES, orig_name)
+                    shutil.copy2(fp, orig_path)
+                    text_path = os.path.join(V2_TEXTS, f)
+                    shutil.copy2(fp, text_path)
+                    sha = file_sha256(fp)
+                    size = os.path.getsize(fp)
+                    DB_MANAGER.add_file(orig_name, f, text_path, orig_path, sha, size, 'v1扫描重建', 0)
+        except Exception:
+            continue
+
+# ---------- HTTP 线程上限（T7）----------
+MAX_HTTP_THREADS = 8
+_HTTP_SEM = threading.Semaphore(MAX_HTTP_THREADS)
 
 # ---------- OCR 并发限流（防止几十个扫描件同时 OCR 打满 CPU）----------
 OCR_SEM = threading.Semaphore(2)
@@ -664,8 +727,13 @@ def archive_name(fn):
     return os.path.splitext(fn)[0] + '.txt'
 
 def all_archive_files():
-    """列出所有归档候选目录里的 txt（降过级的文件可能在第二个、第三个目录里）。
-    返回 [(文件名, 完整路径)]，同名只保留先找到的那个。"""
+    """列出所有归档文件。优先使用 v2 索引，无索引则回退基线文件扫描。
+    返回 [(文件名, 完整路径)]。"""
+    if DB_MANAGER:
+        files, _ = DB_MANAGER.list_files(page=1, page_size=10000)
+        return [(f['archive_name'], f['name']) for f in files]
+    
+    # 基线回退
     seen = set()
     out = []
     for d in ARCHIVE_DIRS:
@@ -679,10 +747,58 @@ def all_archive_files():
                 out.append((f, os.path.join(d, f)))
     return out
 
-def save_archive(name, text):
-    """把转换结果写进归档，默认目录写不进就自动降级到下一个候选。
-    返回 (实际写入的目录, 错误信息)；全部失败时目录为空串。
-    降级到 /tmp 时会打印警告（重启后临时目录文件会丢失）。"""
+def save_archive_v2(name, text, original_name, original_path, extract_method, page_count):
+    """v2 归档：写入文本到 texts/ + 索引入库。返回 (success, message, dir)。"""
+    # L762 的 save_archive_v2 在全局作用域调用 file_sha256，但它只在局部 try 块中导入
+    # 所以需要在此处 import，或改用 index_db 模块的完整引用
+    from index_db import file_sha256 as _sha256
+    if not DB_MANAGER:
+        return False, '索引管理器未初始化', ''
+    
+    # 计算 SHA256
+    # 文本写入临时文件再算哈希（避免大文本在内存中重复）
+    tmp_text = os.path.join(tempfile.mkdtemp(prefix='v2_'), name)
+    try:
+        with open(tmp_text, 'w', encoding='utf-8') as f:
+            f.write(text)
+        
+        sha = _sha256(tmp_text)
+        size = os.path.getsize(tmp_text)
+        
+        # 查重
+        dup = DB_MANAGER.is_duplicate(sha)
+        if dup['duplicate']:
+            return False, '重复文件（%s）' % dup['existing_name'], ''
+        
+        # 写入 v2/texts/
+        os.makedirs(V2_TEXTS, exist_ok=True)
+        text_path = os.path.join(V2_TEXTS, name)
+        shutil.copy2(tmp_text, text_path)
+        
+        # 原件副本
+        if original_path:
+            os.makedirs(V2_FILES, exist_ok=True)
+            shutil.copy2(original_path, os.path.join(V2_FILES, os.path.basename(original_path)))
+        
+        # 索引入库
+        success, msg = DB_MANAGER.add_file(original_name, name, text_path,
+                                           os.path.join(V2_FILES, os.path.basename(original_path)) if original_path else None,
+                                           sha, size, extract_method, page_count)
+        
+        return success, msg, V2_TEXTS
+    except Exception as e:
+        shutil.rmtree(os.path.dirname(tmp_text), ignore_errors=True)
+        return False, str(e), ''
+
+def save_archive(name, text, original_name='', original_path='', extract_method='文本', page_count=0):
+    """把转换结果写进归档。优先 v2 结构，失败降级到 v1。
+    返回 (实际写入的目录, 错误信息)；全部失败时目录为空串。"""
+    # 尝试 v2
+    ok, msg, v2_dir = save_archive_v2(name, text, original_name, original_path, extract_method, page_count)
+    if ok:
+        return v2_dir, ''
+    
+    # 降级基线
     errs = []
     tmp_dir = os.path.join(tempfile.gettempdir(), '检索归档')
     for i, d in enumerate(ARCHIVE_DIRS):
@@ -690,10 +806,8 @@ def save_archive(name, text):
             os.makedirs(d, exist_ok=True)
             with open(os.path.join(d, name), 'w', encoding='utf-8') as f:
                 f.write(text)
-            # 如果降级到 /tmp，提醒用户重启会丢数据
             if d == tmp_dir and i > 0:
-                print('[警告] 程序目录写不进，归档降级到临时目录: %s' % tmp_dir)
-                print('      重启后临时文件会丢失，建议检查程序目录权限。')
+                print('[警告] 归档降级到临时目录: %s' % tmp_dir)
             return d, ''
         except Exception as e:
             errs.append('%s -> %s' % (d, str(e)[:60]))
@@ -708,6 +822,15 @@ def _load_confusable():
         return {}
 
 FONT_CONFUSABLE = _load_confusable()
+
+def chinese_bigram(text, n=2):
+    """对中文文本进行 bigram 切分（零依赖）。
+    提取中文字符序列，生成所有长度为 n 的连续子序列。
+    用于 T1/T2/T3 中文检索、索引、条款感知匹配。"""
+    chinese_chars = re.findall(r'[\u4e00-\u9fff]', text)
+    if len(chinese_chars) < n:
+        return set(chinese_chars)
+    return set(''.join(chinese_chars[i:i+n]) for i in range(len(chinese_chars) - n + 1))
 
 def fuzzy_in(term, text):
     """容错匹配（应对 OCR 错字）：精确命中 > 形近字替换 > 去一字。"""
@@ -747,12 +870,14 @@ def strip_headers_footers(text, page_count):
 
 # ---------- HTTP 处理 ----------
 class Handler(BaseHTTPRequestHandler):
-    def _send(self, code, body, ctype='application/json'):
+    def _send(self, code, body, ctype='application/json', disposition=None):
         if isinstance(body, str):
             body = body.encode('utf-8')
         self.send_response(code)
         self.send_header('Content-Type', ctype + '; charset=utf-8')
         self.send_header('Content-Length', str(len(body)))
+        if disposition:
+            self.send_header('Content-Disposition', 'attachment; filename=%s' % disposition)
         self.end_headers()
         self.wfile.write(body)
 
@@ -766,16 +891,84 @@ class Handler(BaseHTTPRequestHandler):
             html = html.replace('__OCRENGINE__', ocr_engine_desc())
             self._send(200, html, 'text/html')
         elif path == '/files':
+            # 优先走索引数据库（T2 分页 + T3 条款感知）
+            if DB_MANAGER:
+                try:
+                    page = int(parse_qs(u.query).get('page', ['1'])[0])
+                    files, total = DB_MANAGER.list_files(page=page, page_size=50)
+                    self._send(200, json.dumps({'total': total, 'page': page, 'files': files}, ensure_ascii=False))
+                    return
+                except Exception:
+                    pass
+            # 降级：基线文件扫描
             info = [{'name': f, 'size': os.path.getsize(p), 'dir': os.path.dirname(p)}
                     for f, p in all_archive_files()]
-            self._send(200, json.dumps(info, ensure_ascii=False))
+            self._send(200, json.dumps({'total': len(info), 'page': 1, 'files': info}, ensure_ascii=False))
+        
+        elif path == '/backup':
+            # T6 备份导出：打包所有归档文件为 zip
+            try:
+                import zipfile
+                import io
+                buf = io.BytesIO()
+                with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as zf:
+                    for d in (V2_TEXTS,) + tuple(ARCHIVE_DIRS):
+                        if not os.path.isdir(d):
+                            continue
+                        for fn in os.listdir(d):
+                            fp = os.path.join(d, fn)
+                            if os.path.isfile(fp):
+                                zf.write(fp, os.path.join(os.path.basename(d), fn))
+                    # 打包 archive.db
+                    for d in (V2_ARCHIVE,) + tuple(ARCHIVE_DIRS):
+                        if d:
+                            db_path = os.path.join(d, 'archive.db')
+                            if os.path.exists(db_path):
+                                zf.write(db_path, 'archive/backup.db')
+                                break
+                self._send(200, buf.getvalue(), 'application/zip', 'archive_backup_%s.zip' % datetime.now().strftime('%Y%m%d'))
+            except Exception as e:
+                self._send(500, json.dumps({'ok': False, 'err': str(e)}, ensure_ascii=False))
         elif path.startswith('/search'):
             q = parse_qs(u.query).get('q', [''])[0].strip()
             terms = q.split()
             if not terms:
                 self._send(200, json.dumps({'fuzzy': False, 'result': []}, ensure_ascii=False))
                 return
-            # 读入所有归档文件
+            
+            # 优先走索引查询（T1 bigram + T2 排序分页 + T3 条款感知）
+            if DB_MANAGER:
+                try:
+                    # 先尝试索引查询
+                    page = int(parse_qs(u.query).get('page', ['1'])[0])
+                    results, total, pg, ps = DB_MANAGER.search(' '.join(terms), page=page, page_size=20)
+                    
+                    # 格式化结果（T3 条款感知）
+                    formatted = []
+                    for r in results:
+                        hit_item = {
+                            'name': r['name'],
+                            'clause_count': r.get('clause_count', 0),
+                            'hits': []
+                        }
+                        for h in r.get('hits', [])[:20]:
+                            hit = {'line_text': h.get('line_text', '')}
+                            if 'clause' in h:
+                                hit['clause'] = h['clause']
+                            hit_item['hits'].append(hit)
+                        formatted.append(hit_item)
+                    
+                    self._send(200, json.dumps({
+                        'fuzzy': False,
+                        'total': total,
+                        'page': page,
+                        'result': formatted
+                    }, ensure_ascii=False))
+                    return
+                except Exception:
+                    pass  # 索引查询失败，降级基线
+            
+            # 基线回退：大内存扫描 + bigram + 形近字容错
             filedata = []
             for f, p in all_archive_files():
                 try:
@@ -783,31 +976,32 @@ class Handler(BaseHTTPRequestHandler):
                     filedata.append((f, lines))
                 except Exception:
                     continue
-            # 文件级 AND：精确优先，无精确结果再容错（容忍单字 OCR 误差）
+            
+            # 文件级 AND：每个查询词必须命中
             def hit_file(lines):
                 full = '\n'.join(lines)
-                return all(t in full for t in terms)
-            def fuzzy_hit_file(lines):
-                full = '\n'.join(lines)
                 return all(fuzzy_in(t, full) for t in terms)
+            
             candidates = [fd for fd in filedata if hit_file(fd[1])]
             used_fuzzy = False
             if not candidates:
-                used_fuzzy = True
-                candidates = [fd for fd in filedata if fuzzy_hit_file(fd[1])]
+                # 降级精确匹配
+                def exact_hit_file(lines):
+                    full = '\n'.join(lines)
+                    return all(t in full for t in terms)
+                candidates = [fd for fd in filedata if exact_hit_file(fd[1])]
+                if candidates:
+                    used_fuzzy = False
+            
             result = []
             for f, lines in candidates:
                 hits = []
+                full_text = '\n'.join(lines)
                 for i, line in enumerate(lines):
                     if not line.strip():
                         continue
                     matched = [t for t in terms if fuzzy_in(t, line)]
                     if matched:
-                        # 上下文：命中行的前一行 + 本行 + 后一行（各做长行截取），
-                        # 只给单独一行看不出前因后果，给三行才读得懂。
-                        # 上下文窗口：前2行 + 命中行 + 后2行。
-                        # 空行跳过，但必须记录命中行在窗口里的真实下标（ci），
-                        # 前端靠 ci 决定高亮哪一行，不能简单写成固定 1。
                         win = []
                         for k in (i - 2, i - 1, i, i + 1, i + 2):
                             if 0 <= k < len(lines) and lines[k].strip():
@@ -838,38 +1032,105 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         u = urlparse(self.path)
-        if u.path == '/upload':
-            q = parse_qs(u.query)
-            fn = unquote(q.get('name', ['file'])[0])
-            length = int(self.headers.get('Content-Length', 0))
-            data = self.rfile.read(length)
-            tmp = os.path.join(tempfile.mkdtemp(prefix='up_'), os.path.basename(fn))
-            with open(tmp, 'wb') as f:
-                f.write(data)
-            try:
-                text, method = convert(tmp)
-            except Exception as e:
-                self._send(500, json.dumps({'name': fn, 'ok': False, 'err': str(e)}, ensure_ascii=False))
+        
+        # T7: HTTP 线程上限
+        if not _HTTP_SEM.acquire(blocking=False):
+            self._send(503, json.dumps({'ok': False, 'err': '服务繁忙，线程上限%d，请稍后重试' % MAX_HTTP_THREADS}))
+            return
+        
+        try:
+            if u.path == '/upload':
+                # T7: Content-Length 前置校验（200MB 限长）
+                max_upload_size = 200 * 1024 * 1024  # 200MB
+                length = int(self.headers.get('Content-Length', 0))
+                if length > max_upload_size:
+                    # 读完并丢弃请求体，避免阻塞
+                    self.rfile.read(length)
+                    self._send(413, json.dumps({
+                        'ok': False,
+                        'err': '文件过大（%d bytes，上限 %d bytes / 200MB）' % (length, max_upload_size)
+                    }, ensure_ascii=False))
+                    return
+                
+                q = parse_qs(u.query)
+                fn = unquote(q.get('name', ['file'])[0])
+                
+                # 文件名消毒（T7 路径穿越防护）
+                fn = os.path.basename(fn)
+                if not fn or fn.startswith('.'):
+                    self._send(400, json.dumps({'ok': False, 'err': '非法文件名'}))
+                    return
+                
+                # T7: 流式写盘——逐块读取,避免大文件全量驻留内存
+                tmp = os.path.join(tempfile.mkdtemp(prefix='up_'), os.path.basename(fn))
+                BUF = 65536  # 64KB 缓冲
+                sha = hashlib.sha256()
+                with open(tmp, 'wb') as f:
+                    while length > 0:
+                        chunk = self.rfile.read(min(length, BUF))
+                        if not chunk:
+                            break
+                        f.write(chunk)
+                        sha.update(chunk)
+                        length -= len(chunk)
+                try:
+                    text, method = convert(tmp)
+                except Exception as e:
+                    self._send(500, json.dumps({'name': fn, 'ok': False, 'err': str(e)}, ensure_ascii=False))
+                    shutil.rmtree(os.path.dirname(tmp), ignore_errors=True)
+                    return
+                if not text:
+                    self._send(200, json.dumps({'name': fn, 'ok': False, 'err': method}, ensure_ascii=False))
+                    shutil.rmtree(os.path.dirname(tmp), ignore_errors=True)
+                    return
+                an = archive_name(fn)
+                # v2 归档：保留原件副本 + SHA256 查重（先调用再删tmp，因为save_archive_v2需要original_path）
+                ok, werr, real_dir = save_archive_v2(an, text, fn, tmp, method, 0)
                 shutil.rmtree(os.path.dirname(tmp), ignore_errors=True)
-                return
-            shutil.rmtree(os.path.dirname(tmp), ignore_errors=True)
-            if not text:
-                self._send(200, json.dumps({'name': fn, 'ok': False, 'err': method}, ensure_ascii=False))
-                return
-            an = archive_name(fn)
-            real_dir, werr = save_archive(an, text)
-            if not real_dir:
-                # 存盘全失败：必须告诉用户原因，不能让连接崩掉变成 Failed to fetch
-                self._send(200, json.dumps(
-                    {'name': fn, 'ok': False,
-                     'err': '文字已转出%d字，但存盘失败：%s' % (len(text), werr)},
-                    ensure_ascii=False))
-                return
-            self._send(200, json.dumps({'name': fn, 'ok': True, 'method': method,
-                                        'chars': len(text), 'archived': an,
-                                        'dir': real_dir}, ensure_ascii=False))
-        else:
-            self._send(404, 'not found')
+                if not ok:
+                    # 查重失败或存盘失败
+                    self._send(200, json.dumps(
+                        {'name': fn, 'ok': False, 'err': werr},
+                        ensure_ascii=False))
+                    return
+                self._send(200, json.dumps({
+                    'name': fn, 'ok': True, 'method': method,
+                    'chars': len(text), 'archived': an,
+                    'dir': real_dir, 'duplicate': False
+                }, ensure_ascii=False))
+                
+            elif u.path == '/archive/delete':
+                # 删除归档文件 API（POST）
+                try:
+                    length = int(self.headers.get('Content-Length', 0))
+                    body = self.rfile.read(length)
+                    data = json.loads(body.decode('utf-8'))
+                    fn = data.get('name', '')
+                    if not fn:
+                        self._send(400, json.dumps({'ok': False, 'err': '缺少文件名'}))
+                        return
+                    # 优先走索引删除
+                    if DB_MANAGER:
+                        ok, msg = DB_MANAGER.delete_file(fn)
+                        self._send(200, json.dumps({'ok': ok, 'name': fn, 'msg': msg}))
+                        return
+                    # 基线回退
+                    fp = ''
+                    for _, p in all_archive_files():
+                        if os.path.basename(p) == fn:
+                            fp = p
+                            break
+                    if not fp or not os.path.exists(fp):
+                        self._send(404, json.dumps({'ok': False, 'err': '文件不存在'}))
+                        return
+                    os.remove(fp)
+                    self._send(200, json.dumps({'ok': True, 'name': fn}))
+                except Exception as e:
+                    self._send(500, json.dumps({'ok': False, 'err': str(e)}))
+            else:
+                self._send(404, 'not found')
+        finally:
+            _HTTP_SEM.release()
 
     def log_message(self, *a):
         pass
@@ -939,6 +1200,7 @@ h1{font-size:20px;margin-bottom:4px;}
   <button id="tabUpload" class="on" onclick="switchTab('upload')">投喂归档</button>
   <button id="tabSearch" onclick="switchTab('search')">检索</button>
   <button id="tabFiles" onclick="switchTab('files')">已归档 (0)</button>
+  <button id="tabManage" onclick="switchTab('manage')">管理</button>
 </div>
 
 <div id="panel-upload" class="panel on">
@@ -967,6 +1229,15 @@ h1{font-size:20px;margin-bottom:4px;}
 <div id="panel-files" class="panel">
   <div id="archiveList"><div class="empty">加载中…</div></div>
 </div>
+
+<div id="panel-manage" class="panel">
+  <div style="display:flex;gap:8px;margin-bottom:12px;">
+    <input id="manageSearch" placeholder="搜索文件…" style="flex:1;padding:10px 14px;font-size:14px;border:1px solid var(--line);border-radius:8px;">
+    <button onclick="loadManageFiles()" style="padding:10px 20px;background:var(--accent);color:#fff;border:none;border-radius:8px;cursor:pointer;">刷新</button>
+    <button onclick="exportBackup()" style="padding:10px 20px;background:var(--ok);color:#fff;border:none;border-radius:8px;cursor:pointer;">备份导出</button>
+  </div>
+  <div id="manageList"><div class="empty">加载中…</div></div>
+</div>
 </div>
 
 <script>
@@ -976,6 +1247,7 @@ function switchTab(t){
     document.getElementById('tab'+x.charAt(0).toUpperCase()+x.slice(1)).classList.toggle('on', x===t);
   });
   if(t==='files')loadFiles();
+  if(t==='manage')loadManageFiles();
 }
 function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
 function fmt(n){return n>1024*1024?(n/1024/1024).toFixed(1)+' MB':(n>1024?(n/1024).toFixed(0)+' KB':n+' B');}
@@ -1011,16 +1283,50 @@ async function handleFiles(files){
 
 async function loadFiles(){
   try{
-    var r=await fetch('/files');var arr=await r.json();
-    document.getElementById('tabFiles').textContent='已归档 ('+arr.length+')';
+    var r=await fetch('/files');var data=await r.json();
+    var arr=data.files||[];
+    document.getElementById('tabFiles').textContent='已归档 ('+data.total+')';
     var list=document.getElementById('archiveList');
     if(!arr.length){list.innerHTML='<div class="empty">还没有归档文件，先去「投喂归档」添加</div>';return;}
     var html='';
     for(var i=0;i<arr.length;i++){
-      html+='<div class="row"><span>'+esc(arr[i].name)+'</span><span class="sz">'+fmt(arr[i].size)+'</span></div>';
+      var extra = arr[i].page_count ? ' '+arr[i].page_count+'页' : '';
+      extra += arr[i].clause_count ? ' '+arr[i].clause_count+'条' : '';
+      html+='<div class="row"><span>'+esc(arr[i].name)+extra+'</span><span class="sz">'+fmt(arr[i].file_size||0)+'</span></div>';
     }
     list.innerHTML=html;
   }catch(e){}
+}
+
+function exportBackup(){
+  window.open('/backup', '_blank');
+}
+
+async function loadManageFiles(){
+  try{
+    var r=await fetch('/files');var data=await r.json();
+    var arr=data.files||[];
+    var list=document.getElementById('manageList');
+    if(!arr.length){list.innerHTML='<div class="empty">还没有归档文件</div>';return;}
+    var html='';
+    for(var i=0;i<arr.length;i++){
+      html+='<div class="row"><span>'+esc(arr[i].name)+'</span><span style="display:flex;gap:8px;align-items:center;">'
+        +'<span class="sz">'+fmt(arr[i].file_size||0)+'</span>'
+        +'<button onclick="deleteFile(\''+esc(arr[i].name)+'\')" style="padding:4px 10px;background:var(--err);color:#fff;border:none;border-radius:4px;cursor:pointer;">删除</button>'
+        +'</span></div>';
+    }
+    list.innerHTML=html;
+  }catch(e){}
+}
+
+async function deleteFile(name){
+  if(!confirm('确定删除 '+name+'？'))return;
+  try{
+    var r=await fetch('/archive/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:name})});
+    var j=await r.json();
+    if(j.ok){alert('已删除');loadManageFiles();loadFiles();}
+    else{alert('删除失败：'+j.err);}
+  }catch(e){alert('删除失败：'+e);}
 }
 
 function highlight(line,terms){
@@ -1035,26 +1341,19 @@ async function search(){
   if(!q){res.innerHTML='<div class="empty">等待输入关键词…</div>';stats.textContent='';return;}
   var r=await fetch('/search?q='+encodeURIComponent(q));
   var data=await r.json();
-  var arr=data.result;
+  var arr=data.result||[];
   var terms=q.split(/\\s+/).filter(Boolean);
   var tf=0,th=0,html='';
   for(var i=0;i<arr.length;i++){
-    var f=arr[i];tf++;th+=f.total;
+    var f=arr[i];tf++;th+=f.hits.length;
     html+='<div class="file-block"><div class="file-head" onclick="this.parentNode.classList.toggle(&quot;collapsed&quot;)">'
       +'<span class="file-name">'+esc(f.name)+'</span>'
-      +'<span class="file-count">命中 '+f.total+' 处'+(f.total>300?'（显示前300）':'')+'</span>'
+      +'<span class="file-count">命中 '+f.hits.length+' 处'+(f.hits.length>300?'（显示前300）':'')+'</span>'
       +'</div><div class="hits">';
     for(var m=0;m<f.hits.length;m++){
       var h=f.hits[m];
-      var cs=(h.ctx&&h.ctx.length)?h.ctx:[h.line];
-      var ci=(typeof h.ci==='number')?h.ci:0;
-      html+='<div class="hit"><span class="ln">'+h.n+'</span>';
-      for(var c=0;c<cs.length;c++){
-        var cur=(c===ci)||cs[c]===h.line;
-        html+='<div style="'+(cur?'':'color:#8b949e;font-size:12px;line-height:1.5;')+'">'
-          +(cur?highlight(cs[c],h.kw):esc(cs[c]))+'</div>';
-      }
-      html+='</div>';
+      var clauseTag = h.clause ? '<span style="color:#1f6feb;font-size:12px;margin-right:6px;">['+esc(h.clause)+']</span>' : '';
+      html+='<div class="hit"><span class="ln">'+clauseTag+'</span><div>'+highlight(h.line_text,terms)+'</div></div>';
     }
     html+='</div></div>';
   }
@@ -1064,6 +1363,39 @@ async function search(){
 document.getElementById('q').addEventListener('input',function(){clearTimeout(this._t);this._t=setTimeout(search,200);});
 
 loadFiles();
+
+function loadManageFiles(){
+  fetch('/files').then(function(r){return r.json();}).then(function(files){
+    var list=document.getElementById('manageList');
+    if(!files.length){list.innerHTML='<div class="empty">没有归档文件</div>';return;}
+    var html='';
+    for(var i=0;i<files.length;i++){
+      html+='<div class="row"><span>'+esc(files[i].name)+' <span class="sz">'+fmt(files[i].size)+'</span></span>'
+        +'<button onclick="deleteFile(\''+encodeURIComponent(files[i].name)+'\')" style="padding:6px 14px;background:var(--err);color:#fff;border:none;border-radius:6px;cursor:pointer;">删除</button>'
+        +'</div>';
+    }
+    list.innerHTML=html;
+  });
+}
+
+async function deleteFile(name){
+  if(!confirm('确定要删除 "'+decodeURIComponent(name)+'" 吗？'))return;
+  try{
+    var r=await fetch('/archive/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:decodeURIComponent(name)})});
+    var j=await r.json();
+    if(j.ok){alert('已删除');loadManageFiles();}
+    else{alert('删除失败: '+j.err);}
+  }catch(e){alert('请求失败: '+e);}
+}
+
+document.getElementById('manageSearch').addEventListener('input',function(){
+  var q=this.value.trim().toLowerCase();
+  var rows=document.getElementById('manageList').querySelectorAll('.row');
+  for(var i=0;i<rows.length;i++){
+    var name=rows[i].querySelector('span').textContent.toLowerCase();
+    rows[i].style.display=name.indexOf(q)!==-1?'':'none';
+  }
+});
 </script>
 </body>
 </html>'''
@@ -1074,6 +1406,8 @@ def main():
     print('  归档目录:', ARCHIVE)
     print('  识别引擎:', ocr_engine_desc())
     print('=' * 46)
+    # 初始化索引管理器（T1/T2/T3/T4 核心）
+    _init_index_manager()
     class ReuseServer(ThreadingTCPServer):
         allow_reuse_address = True   # 端口复用，避免重启时 TIME_WAIT 导致 bind 失败
         daemon_threads = True        # 主线程退出时子线程自动结束

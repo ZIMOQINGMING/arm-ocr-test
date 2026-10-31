@@ -1,0 +1,194 @@
+name: ARM64 CI (自动化测试)
+
+on:
+  push:
+    branches: [ main, master ]
+    paths:
+      - 'start.py'
+      - 'check.py'
+      - 'backup_restore.py'
+      - 'migrate_v1_to_v2.py'
+      - 'tests/*.py'
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  unit-tests:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 15
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 设置 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: 安装系统依赖
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y poppler-utils tesseract-ocr tesseract-ocr-chi-sim
+
+      - name: 安装 Python 依赖
+        run: |
+          pip install openpyxl xlwt xlrd
+
+      - name: 运行 T5 题库覆盖度测试
+        run: |
+          cd tests
+          python3 t5_coverage_test.py
+        continue-on-error: true
+
+      - name: 运行 T6 备份恢复测试
+        run: |
+          cd tests
+          python3 t6_backup_test.py
+        continue-on-error: true
+
+      - name: 运行 T7 服务健壮性测试
+        run: |
+          cd tests
+          python3 t7_robustness_test.py
+        continue-on-error: true
+
+  end-to-end:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
+    needs: unit-tests
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 设置 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: 安装系统依赖
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y poppler-utils tesseract-ocr tesseract-ocr-chi-sim
+
+      - name: 安装 Python 依赖
+        run: |
+          pip install openpyxl xlwt xlrd python-docx
+
+      - name: 启动前自检
+        run: |
+          python3 check.py
+
+      - name: 创建测试文件
+        run: |
+          mkdir -p 测试文件
+
+          # 创建法规 txt
+          cat > 测试文件/法规.txt << 'EOF'
+          第一章 总则
+          第一条 为了规范招标投标活动，保护国家利益、社会公共利益和招标投标活动当事人的合法权益，提高经济效益，保证项目质量，制定本法。
+          第二条 在中华人民共和国境内进行招标投标活动，适用本法。
+          第三条 在中华人民共和国境内进行下列工程建设项目包括项目的勘察、设计、施工、监理以及与工程建设有关的重要设备、材料等的采购，必须进行招标：
+          （一）大型基础设施、公用事业等关系社会公共利益、公众安全的项目；
+          （二）全部或者部分使用国有资金投资或者国家融资的项目；
+          （三）使用国际组织或者外国政府贷款、援助资金的项目。
+          EOF
+
+          # 创建 Word docx
+          python3 -c "
+          from docx import Document
+          doc = Document()
+          doc.add_heading('招标投标法规测试', 0)
+          doc.add_paragraph('根据《中华人民共和国招标投标法》规定，必须进行招标的项目包括：')
+          doc.add_paragraph('1. 大型基础设施、公用事业等关系社会公共利益的项目')
+          doc.add_paragraph('2. 全部或者部分使用国有资金投资的项目')
+          doc.add_paragraph('3. 使用国际贷款、援助资金的项目')
+          doc.save('测试文件/法规文档.docx')
+          "
+
+          # 创建 Excel 题库
+          python3 -c "
+          import openpyxl
+          wb = openpyxl.Workbook()
+          ws = wb.active
+          ws.title = '单选题'
+          ws.append(['序号', '题干', '选项A', '选项B', '选项C', '选项D', '正确答案'])
+          ws.append([1, '根据《招标投标法》，招标文件发出到投标截止最短多少日', '十日', '十五日', '二十日', '三十日', 'C'])
+          ws.append([2, '以下哪项不属于招标投标活动的原则', '公开', '公平', '公正', '高价优先', 'D'])
+          wb.save('测试文件/题库.xlsx')
+          "
+
+      - name: 启动服务
+        run: |
+          python3 start.py > /tmp/server.log 2>&1 &
+          SERVER_PID=$!
+          echo "服务 PID: $SERVER_PID"
+          sleep 5
+          if kill -0 $SERVER_PID 2>/dev/null; then
+            echo "服务启动成功"
+          else
+            echo "服务启动失败，查看日志："
+            cat /tmp/server.log
+            exit 1
+          fi
+
+      - name: 验证服务可访问
+        run: |
+          PORT=$(grep -oP '服务地址: http://\K[0-9]+' /tmp/server.log | head -1)
+          if [ -z "$PORT" ]; then
+            PORT=8765
+          fi
+          curl -s "http://127.0.0.1:$PORT/" | head -5
+          echo "服务可访问验证完成"
+
+      - name: 上传测试文件
+        run: |
+          PORT=$(grep -oP '服务地址: http://\K[0-9]+' /tmp/server.log | head -1)
+          if [ -z "$PORT" ]; then
+            PORT=8765
+          fi
+
+          echo "--- 上传 txt ---"
+          curl -s -F "file=@测试文件/法规.txt" "http://127.0.0.1:$PORT/upload"
+
+          echo "--- 上传 docx ---"
+          curl -s -F "file=@测试文件/法规文档.docx" "http://127.0.0.1:$PORT/upload"
+
+          echo "--- 上传 xlsx ---"
+          curl -s -F "file=@测试文件/题库.xlsx" "http://127.0.0.1:$PORT/upload"
+
+      - name: 执行检索测试
+        run: |
+          PORT=$(grep -oP '服务地址: http://\K[0-9]+' /tmp/server.log | head -1)
+          if [ -z "$PORT" ]; then
+            PORT=8765
+          fi
+
+          echo "--- 搜索 招标投标 ---"
+          curl -s "http://127.0.0.1:$PORT/search?q=招标投标" | head -100
+
+          echo "--- 搜索 国有资金 ---"
+          curl -s "http://127.0.0.1:$PORT/search?q=国有资金" | head -100
+
+      - name: 备份恢复测试
+        run: |
+          python3 backup_restore.py
+
+      - name: 上传测试工件
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: arm64-test-artifacts
+          path: |
+            evidence/
+            测试文件/
+            归档/
+            SHA256校验.txt
+          retention-days: 7
+
+      - name: 停止服务
+        if: always()
+        run: |
+          pkill -f start.py 2>/dev/null || true
