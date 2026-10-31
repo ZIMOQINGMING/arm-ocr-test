@@ -50,14 +50,27 @@ jobs:
             rapidocr
           echo ""
           echo "=== 安装后验证 ==="
-          python3 -c "
-          import rapidocr_onnxruntime as ro
-          print(f'RapidOCR 版本: {rapidocr_onnxruntime.__version__}')
-          import onnxruntime
-          print(f'onnxruntime 版本: {onnxruntime.__version__}')
-          import numpy
-          print(f'numpy 版本: {numpy.__version__}')
-          "
+python3 << 'PYEOF'
+import site
+import os
+print(f"site-packages: {site.getsitepackages()}")
+for sp in site.getsitepackages():
+    for item in sorted(os.listdir(sp)):
+        if 'rapidocr' in item.lower():
+            print(f"Found in site-packages: {sp}/{item}")
+            for sub in sorted(os.listdir(os.path.join(sp, item))[:15]):
+                print(f"  - {sub}")
+print("")
+# Try various import names
+for mod in ["rapidocr", "rapidocr_onnxruntime", "RapidOCR", "RapidOCR_onnxruntime"]:
+    try:
+        m = __import__(mod)
+        print(f"SUCCESS: import {mod}")
+        if hasattr(m, "__version__"):
+            print(f"  Version: {m.__version__}")
+    except ImportError as e:
+        print(f"FAILED: import {mod} -> {e}")
+PYEOF
 
       - name: RapidOCR API 功能测试
         run: |
@@ -156,6 +169,7 @@ jobs:
             evidence/
           retention-days: 7
 # Trigger: RapidOCR combo test run #5 (2026-10-31)
+
 
 
 
