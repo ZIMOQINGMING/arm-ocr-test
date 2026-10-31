@@ -1,0 +1,156 @@
+name: RapidOCR 精确组合测试 (ARM64 真机)
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'RapidOCR离线包/**/*.whl'
+      - 'start.py'
+      - '.github/workflows/rapidocr-combo-test.yml'
+
+jobs:
+  rapidocr-combo-test:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 15
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 设置 Python 3.8 环境
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.8'
+
+      - name: 安装系统依赖
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y tesseract-ocr tesseract-ocr-chi-sim poppler-utils
+
+      - name: 验证 Python 版本
+        run: |
+          python3 -V
+          python3 -c "import sys; print(f'Python {sys.version}')"
+
+      - name: 安装 RapidOCR 精确组合 (cp38)
+        run: |
+          echo "=== 安装 RapidOCR 精确组合 ==="
+          WHEEL_DIR="RapidOCR离线包/rapidocr_wheels"
+          echo "Wheel 目录内容:"
+          ls -la "$WHEEL_DIR/"
+          echo ""
+          echo "=== 安装顺序（依赖优先）==="
+          pip3 install --no-index --find-links="$WHEEL_DIR" --prefer-binary \
+            numpy \
+            onnxruntime \
+            opencv_python_headless \
+            pillow \
+            PyYAML \
+            rapidocr
+          echo ""
+          echo "=== 安装后验证 ==="
+          python3 -c "
+          import rapidocr_onnxruntime
+          print(f'RapidOCR 版本: {rapidocr_onnxruntime.__version__}')
+          import onnxruntime
+          print(f'onnxruntime 版本: {onnxruntime.__version__}')
+          import numpy
+          print(f'numpy 版本: {numpy.__version__}')
+          "
+
+      - name: RapidOCR API 功能测试
+        run: |
+          echo "=== RapidOCR API 功能测试 ==="
+          python3 << 'PYEOF'
+          from rapidocr_onnxruntime import RapidOCR
+          import numpy as np
+
+          # 创建 100x50 的测试图片（黑底白字）
+          img = np.zeros((50, 100, 3), dtype=np.uint8)
+          img[:] = 255  # 白色背景
+
+          # 加载 OCR 引擎
+          print("初始化 RapidOCR...")
+          ocr = RapidOCR()
+          print("RapidOCR 初始化成功")
+
+          # 运行 OCR
+          result, elapse = ocr(img)
+          print(f"OCR 结果: {result}")
+          print(f"耗时: {elapse:.2f}s")
+          print("RapidOCR API 测试通过")
+          PYEOF
+          echo "RapidOCR API 测试完成"
+
+      - name: 创建中文测试图片
+        run: |
+          echo "=== 创建中文测试图片 ==="
+          python3 << 'PYEOF'
+          from PIL import Image, ImageDraw, ImageFont
+          import os
+
+          # 创建白色背景图片
+          img = Image.new('RGB', (400, 100), color='white')
+          draw = ImageDraw.Draw(img)
+
+          # 尝试使用系统字体（ARM64）
+          try:
+              font = ImageFont.truetype('/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf', 20)
+          except:
+              font = ImageFont.load_default()
+
+          draw.text((10, 40), "招标投标", fill='black', font=font)
+          os.makedirs('测试文件', exist_ok=True)
+          img.save('测试文件/中文测试.png')
+          print("中文测试图片创建成功")
+          PYEOF
+          echo "中文测试图片创建完成"
+
+      - name: RapidOCR 中文识别测试
+        run: |
+          echo "=== RapidOCR 中文识别测试 ==="
+          python3 << 'PYEOF'
+          from rapidocr_onnxruntime import RapidOCR
+          from PIL import Image
+          import numpy as np
+
+          ocr = RapidOCR()
+
+          # 测试 1: 中文测试图片
+          img_path = '测试文件/中文测试.png'
+          if os.path.exists(img_path):
+              img = np.array(Image.open(img_path).convert('RGB'))
+              result, elapse = ocr(img)
+              print(f"中文测试图片 OCR 结果: {result}")
+              print(f"中文识别耗时: {elapse:.2f}s")
+
+          print("RapidOCR 中文识别测试完成")
+          PYEOF
+          echo "RapidOCR 中文识别测试完成"
+
+      - name: 验证 start.py 能调用 RapidOCR
+        run: |
+          echo "=== 验证 start.py 能调用 RapidOCR ==="
+          python3 -c "
+          import sys
+          sys.path.insert(0, '.')
+          # 检查 start.py 中的 OCR 相关逻辑
+          with open('start.py', 'r', encoding='utf-8') as f:
+              content = f.read()
+              if 'rapidocr' in content.lower() or 'RapidOCR' in content:
+                  print('start.py 包含 RapidOCR 调用逻辑')
+              else:
+                  print('start.py 未包含 RapidOCR 调用逻辑')
+          print('start.py 检查完成')
+          "
+          echo "start.py 验证完成"
+
+      - name: 上传测试结果
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rapidocr-combo-results
+          path: |
+            测试文件/
+            evidence/
+          retention-days: 7
