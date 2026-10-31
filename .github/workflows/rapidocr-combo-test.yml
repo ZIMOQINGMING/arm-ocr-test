@@ -48,8 +48,7 @@ jobs:
             pillow \
             PyYAML \
             rapidocr
-          # Install omegaconf-2.1.2 from local wheel (PyPI version fixes PosixPath bug in 2.0.6)
-          pip3 install --no-index --find-links="$WHEEL_DIR" --prefer-binary             "./RapidOCR离线包/rapidocr_wheels/omegaconf-2.1.2-py3-none-any.whl"
+
           echo ""
           echo "=== 安装后验证 ==="
           python3 << 'PYEOF'
@@ -72,6 +71,36 @@ jobs:
                       print(f"  Version: {m.__version__}")
               except ImportError as e:
                   print(f"FAILED: import {mod} -> {e}")
+          PYEOF
+
+      - name: Patch rapidocr main.py (PosixPath -> str for omegaconf compat)
+        run: |
+          python3 << 'PYEOF'
+          import site
+          import os
+          
+          # Find rapidocr main.py
+          for sp in site.getsitepackages():
+              main_path = os.path.join(sp, 'rapidocr', 'main.py')
+              if os.path.exists(main_path):
+                  with open(main_path, 'r') as f:
+                      content = f.read()
+                  
+                  # Replace: cfg.Global.model_root_dir = root_dir / "models"
+                  # With:   cfg.Global.model_root_dir = str(root_dir / "models")
+                  old = 'cfg.Global.model_root_dir = root_dir / "models"'
+                  new = 'cfg.Global.model_root_dir = str(root_dir / "models")'
+                  
+                  if old in content:
+                      content = content.replace(old, new)
+                      with open(main_path, 'w') as f:
+                          f.write(content)
+                      print(f"Patched: {main_path}")
+                  else:
+                      print(f"Pattern not found in {main_path}")
+                  break
+          else:
+              print("ERROR: rapidocr/main.py not found!")
           PYEOF
 
       - name: RapidOCR API 功能测试
