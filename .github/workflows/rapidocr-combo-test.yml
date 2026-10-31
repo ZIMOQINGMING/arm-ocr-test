@@ -51,7 +51,7 @@ jobs:
           echo ""
           echo "=== 安装后验证 ==="
           python3 -c "
-          import rapidocr_onnxruntime
+          import rapidocr_onnxruntime as ro
           print(f'RapidOCR 版本: {rapidocr_onnxruntime.__version__}')
           import onnxruntime
           print(f'onnxruntime 版本: {onnxruntime.__version__}')
@@ -156,4 +156,5 @@ jobs:
             evidence/
           retention-days: 7
 # Trigger: RapidOCR combo test run #5 (2026-10-31)
+
 
