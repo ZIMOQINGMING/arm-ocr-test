@@ -47,8 +47,9 @@ jobs:
             opencv_python_headless \
             pillow \
             PyYAML \
-            omegaconf==2.0.5 \
             rapidocr
+          # Install omegaconf-2.1.2 from local wheel (PyPI version fixes PosixPath bug in 2.0.6)
+          pip3 install --no-index --find-links="$WHEEL_DIR" --prefer-binary             "./RapidOCR离线包/rapidocr_wheels/omegaconf-2.1.2-py3-none-any.whl"
           echo ""
           echo "=== 安装后验证 ==="
           python3 << 'PYEOF'
