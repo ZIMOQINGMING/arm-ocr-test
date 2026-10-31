@@ -1046,12 +1046,12 @@ class Handler(BaseHTTPRequestHandler):
                 max_upload_size = 200 * 1024 * 1024  # 200MB
                 length = int(self.headers.get('Content-Length', 0))
                 if length > max_upload_size:
-                    # 读完并丢弃请求体，避免阻塞
-                    self.rfile.read(length)
+                    # T7: Content-Length 超限在读体前即拒绝，直接返回 413 并关闭连接
                     self._send(413, json.dumps({
                         'ok': False,
                         'err': '文件过大（%d bytes，上限 %d bytes / 200MB）' % (length, max_upload_size)
                     }, ensure_ascii=False))
+                    self.wfile.close()
                     return
                 
                 q = parse_qs(u.query)

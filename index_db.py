@@ -60,8 +60,14 @@ def extract_clauses(text):
     clauses = split_clauses(text)
     if clauses:
         return clauses
-    # 没有识别到条款结构
-    return [(text, None)]
+    # 没有识别到条款结构：以 None 为 clause_num，text 为 clause_text，确保索引
+    return [(None, text)]
+
+# ---------- bigram 兜底匹配 ----------
+def _extract_bigram_chars(text):
+    """提取文本中的中文字符集（用于 bigram 匹配）。"""
+    chars = re.findall(r'[\u4e00-\u9fff]', text)
+    return set(chars), set(''.join(chars[i:i+2]) for i in range(len(chars) - 1))
 
 # ---------- 文件哈希 ----------
 def file_sha256(path):
@@ -240,23 +246,48 @@ class ArchiveDB:
             cursor = conn.execute(base_query, (match_query, page_size, (page - 1) * page_size))
         else:
             # 降级查询：LIKE 匹配
-            where_clauses = ' OR '.join([f'fi.clause_text LIKE ?' for _ in terms])
+            # 多 term 组合查询：先 OR 获取所有候选，然后在 Python 侧过滤 AND
+            where_clause = ' OR '.join([f'fi.clause_text LIKE ?' for _ in terms])
+            params_base = [f'%{t}%' for t in terms]
             base_query = f'''
-                SELECT DISTINCT fm.id, fm.original_name, fm.archive_name, fm.clause_count,
+                SELECT fm.id, fm.original_name, fm.archive_name, fm.clause_count,
                        fi.clause_text, fi.clause_number
                 FROM fts_index fi
                 JOIN file_meta fm ON fm.id = fi.doc_id
-                WHERE {where_clauses}
-                LIMIT ? OFFSET ?
+                WHERE {where_clause}
+                ORDER BY fm.id
             '''
-            params = [f'%{t}%' for t in terms] + [page_size, (page - 1) * page_size]
-            
+            params = params_base  # 不加 LIMIT，全部取回后在 Python 侧分页
             cursor = conn.execute(base_query, params)
         
-        rows = cursor.fetchall()
+        all_rows = cursor.fetchall()
         
-        # 统计总数
-        if self.use_fts5:
+        # LIKE 分支：Python 侧 AND 过滤 + 分页 + 计数
+        if not self.use_fts5:
+            # 按 doc_id 聚合全文
+            doc_full_text = {}  # doc_id -> 完整 clauses 拼接
+            for row_id, name, archive_name, clause_count, clause_text, clause_number in all_rows:
+                if row_id not in doc_full_text:
+                    doc_full_text[row_id] = ''
+                doc_full_text[row_id] += ' ' + (clause_text or '')
+            
+            # AND 过滤：每个 term 必须出现在某行的 clause_text 中
+            filtered_docs = set()
+            for doc_id, full_text in doc_full_text.items():
+                if all(t in full_text for t in terms):
+                    filtered_docs.add(doc_id)
+            
+            # 从 all_rows 中筛选 AND 命中的行
+            filtered_rows = [r for r in all_rows if r[0] in filtered_docs]
+            
+            # 计数（所有命中 AND 的文件数）
+            total = len(filtered_docs)
+            
+            # 分页
+            filtered_rows = filtered_rows[(page - 1) * page_size : page * page_size]
+        else:
+            filtered_rows = all_rows
+            # FTS5 计数
             count_query = f'''
                 SELECT COUNT(DISTINCT fm.id)
                 FROM fts_index fi
@@ -264,12 +295,15 @@ class ArchiveDB:
                 WHERE fts_index MATCH ?
             '''
             total = conn.execute(count_query, (match_query,)).fetchone()[0]
-        else:
-            count_where = ' OR '.join([f'fi.clause_text LIKE ?' for _ in terms])
-            total = conn.execute(
-                f'SELECT COUNT(DISTINCT fm.id) FROM fts_index fi JOIN file_meta fm ON fm.id = fi.doc_id WHERE {count_where}',
-                [f'%{t}%' for t in terms]
-            ).fetchone()[0]
+        
+        # Bigram 兜底：仅对单 term 查询且未命中且包含中文时，回退到 bigram 匹配
+        # 多 term 查询（如"劳动 分页"）AND 过滤失败时应返回 0，不触发 bigram
+        if total == 0 and not self.use_fts5 and len(terms) == 1 and any('\u4e00' <= c <= '\u9fff' for c in query):
+            bigram_results, total = self._search_bigram(query, page, page_size)
+            # bigram 结果已是最终格式，直接返回
+            return bigram_results, total, page, page_size
+        
+        rows = filtered_rows
         
         # 结果聚合：按文件分组
         results = {}
@@ -291,6 +325,74 @@ class ArchiveDB:
         sorted_results = sorted(results.values(), key=lambda x: len(x['hits']), reverse=True)
         
         return sorted_results[:page_size], total, page, page_size
+    
+    def _search_bigram(self, query, page=1, page_size=20):
+        """Bigram 兜底搜索：LIKE 未命中时对全文进行 bigram 匹配。
+        适用于跨字查询（如'劳动者解除'）——LIKE 需完整子串，bigram 可匹配跨字组合。
+        返回 (results, total)。"""
+        conn = self._get_conn()
+        
+        # 提取查询词的中文字符集
+        query_chars = re.findall(r'[\u4e00-\u9fff]', query)
+        if len(query_chars) < 2:
+            return [], 0
+        
+        query_bigrams = set(''.join(query_chars[i:i+2]) for i in range(len(query_chars) - 1))
+        if not query_bigrams:
+            return [], 0
+        
+        # 获取所有 clause_text + clause_number 及 doc_id
+        rows = conn.execute(
+            'SELECT id, doc_id, clause_text, clause_number FROM fts_index'
+        ).fetchall()
+        
+        # 按 doc_id 分组，在 Python 侧做 bigram 匹配
+        file_hits = {}  # doc_id -> {'matched_bigrams': set, 'hits': list}
+        
+        for row_id, doc_id, clause_text, clause_number in rows:
+            clause_chars = re.findall(r'[\u4e00-\u9fff]', clause_text)
+            if len(clause_chars) < 2:
+                continue
+            clause_bigrams = set(''.join(clause_chars[i:i+2]) for i in range(len(clause_chars) - 1))
+            
+            matched = query_bigrams & clause_bigrams
+            if matched:
+                if doc_id not in file_hits:
+                    file_hits[doc_id] = {'matched_bigrams': set(), 'hits': []}
+                file_hits[doc_id]['matched_bigrams'].update(matched)
+                file_hits[doc_id]['hits'].append({
+                    'line_text': clause_text[:200],
+                    'clause': clause_number if clause_number else ''
+                })
+        
+        if not file_hits:
+            return [], 0
+        
+        # 按命中 bigram 数量排序
+        total = len(file_hits)
+        sorted_docs = sorted(file_hits.items(), key=lambda x: len(x[1]['matched_bigrams']), reverse=True)
+        
+        # 分页
+        sorted_docs = sorted_docs[(page-1)*page_size: page*page_size]
+        
+        # 构建结果
+        results = []
+        for doc_id, data in sorted_docs:
+            # 查 file_meta 获取 name
+            meta = conn.execute(
+                'SELECT original_name, archive_name, clause_count FROM file_meta WHERE id = ?',
+                (doc_id,)
+            ).fetchone()
+            
+            if meta:
+                results.append({
+                    'name': meta[0],
+                    'archive_name': meta[1],
+                    'clause_count': meta[2],
+                    'hits': data['hits']
+                })
+        
+        return results, total
     
     def delete_file(self, archive_name):
         """删除文件索引。返回 (success, message)。"""
