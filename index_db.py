@@ -223,6 +223,7 @@ class ArchiveDB:
         """搜索索引。返回 (results, total, page, page_size)。"""
         conn = self._get_conn()
         terms = query.split()
+        print(f'[搜索] query={query!r}, terms={terms}, use_fts5={self.use_fts5}', flush=True)
         
         if not terms:
             return [], 0, page, page_size

@@ -158,6 +158,15 @@ def _init_index_manager():
         print('[警告] 索引初始化失败：%s（将回退到基线文件扫描）' % e)
         DB_MANAGER = None
 
+# 模块加载时自动初始化索引管理器（确保 HTTP 线程也能使用）
+try:
+    _init_index_manager()
+    print(f'[初始化] DB_MANAGER={DB_MANAGER}', flush=True)
+except Exception as e:
+    print(f'[初始化] 模块级调用失败: {e}', flush=True)
+    import traceback
+    traceback.print_exc()
+
 def _scan_v1_to_v2():
     """扫描 v1 归档目录，重建 v2 结构 + 索引。"""
     if not DB_MANAGER:
@@ -967,8 +976,12 @@ class Handler(BaseHTTPRequestHandler):
                         'result': formatted
                     }, ensure_ascii=False))
                     return
-                except Exception:
-                    pass  # 索引查询失败，降级基线
+                except Exception as e:
+                    print(f'[搜索] DB_MANAGER.search 失败: {e}', flush=True)
+                    import traceback
+                    traceback.print_exc()
+                    # 索引查询失败，降级基线
+                    pass
             
             # 基线回退：大内存扫描 + bigram + 形近字容错
             filedata = []
