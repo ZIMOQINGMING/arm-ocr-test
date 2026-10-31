@@ -40,29 +40,76 @@ jobs:
           ls -la "$WHEEL_DIR/"
           echo ""
           echo "=== 安装顺序（依赖优先）==="
+          pip install pip==23.0
           pip3 install --no-index --find-links="$WHEEL_DIR" --prefer-binary \
             numpy \
-            onnxruntime \
             opencv_python_headless \
             pillow \
             PyYAML \
             rapidocr
+          # 单独安装 onnxruntime-1.19.2 (支持 IR v10, 1.16.3 仅支持 IR v9)
+          pip3 install --no-index --find-links="$WHEEL_DIR" --prefer-binary \
+            ./RapidOCR离线包/rapidocr_wheels/onnxruntime-1.19.2-cp38-cp38-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl
+
           echo ""
           echo "=== 安装后验证 ==="
-          python3 -c "
-          import rapidocr_onnxruntime
-          print(f'RapidOCR 版本: {rapidocr_onnxruntime.__version__}')
-          import onnxruntime
-          print(f'onnxruntime 版本: {onnxruntime.__version__}')
-          import numpy
-          print(f'numpy 版本: {numpy.__version__}')
-          "
+          python3 << 'PYEOF'
+          import site
+          import os
+          print(f"site-packages: {site.getsitepackages()}")
+          for sp in site.getsitepackages():
+              for item in sorted(os.listdir(sp)):
+                  if 'rapidocr' in item.lower():
+                      print(f"Found in site-packages: {sp}/{item}")
+                      for sub in sorted(os.listdir(os.path.join(sp, item))[:15]):
+                          print(f"  - {sub}")
+          print("")
+          # Try various import names
+          for mod in ["rapidocr", "rapidocr", "RapidOCR", "RapidOCR_onnxruntime"]:
+              try:
+                  m = __import__(mod)
+                  print(f"SUCCESS: import {mod}")
+                  if hasattr(m, "__version__"):
+                      print(f"  Version: {m.__version__}")
+              except ImportError as e:
+                  print(f"FAILED: import {mod} -> {e}")
+          PYEOF
+
+      - name: Patch rapidocr main.py (PosixPath -> str for omegaconf compat)
+        run: |
+          python3 << 'PYEOF'
+          import site
+          import os
+          
+          # Find rapidocr main.py
+          for sp in site.getsitepackages():
+              main_path = os.path.join(sp, 'rapidocr', 'main.py')
+              if os.path.exists(main_path):
+                  with open(main_path, 'r') as f:
+                      content = f.read()
+                  
+                  # Replace: cfg.Global.model_root_dir = root_dir / "models"
+                  # With:   cfg.Global.model_root_dir = str(root_dir / "models")
+                  old = 'cfg.Global.model_root_dir = root_dir / "models"'
+                  new = 'cfg.Global.model_root_dir = str(root_dir / "models")'
+                  
+                  if old in content:
+                      content = content.replace(old, new)
+                      with open(main_path, 'w') as f:
+                          f.write(content)
+                      print(f"Patched: {main_path}")
+                  else:
+                      print(f"Pattern not found in {main_path}")
+                  break
+          else:
+              print("ERROR: rapidocr/main.py not found!")
+          PYEOF
 
       - name: RapidOCR API 功能测试
         run: |
           echo "=== RapidOCR API 功能测试 ==="
           python3 << 'PYEOF'
-          from rapidocr_onnxruntime import RapidOCR
+          from rapidocr.main import RapidOCR
           import numpy as np
 
           # 创建 100x50 的测试图片（黑底白字）
@@ -74,10 +121,12 @@ jobs:
           ocr = RapidOCR()
           print("RapidOCR 初始化成功")
 
-          # 运行 OCR
-          result, elapse = ocr(img)
-          print(f"OCR 结果: {result}")
-          print(f"耗时: {elapse:.2f}s")
+          # 运行 OCR - RapidOCR 3.10.0 returns RapidOCROutput object
+          result = ocr(img)
+          print(f"OCR 结果类型: {type(result).__name__}")
+          print(f"OCR 耗时: {result.elapse:.2f}s")
+          print(f"文本数: {len(result)}")
+          print(f"elapse_list: {result.elapse_list}")
           print("RapidOCR API 测试通过")
           PYEOF
           echo "RapidOCR API 测试完成"
@@ -110,8 +159,9 @@ jobs:
         run: |
           echo "=== RapidOCR 中文识别测试 ==="
           python3 << 'PYEOF'
-          from rapidocr_onnxruntime import RapidOCR
+          from rapidocr.main import RapidOCR
           from PIL import Image
+          import os
           import numpy as np
 
           ocr = RapidOCR()
@@ -120,9 +170,10 @@ jobs:
           img_path = '测试文件/中文测试.png'
           if os.path.exists(img_path):
               img = np.array(Image.open(img_path).convert('RGB'))
-              result, elapse = ocr(img)
-              print(f"中文测试图片 OCR 结果: {result}")
-              print(f"中文识别耗时: {elapse:.2f}s")
+              result = ocr(img)
+              print(f"中文测试图片 OCR 结果: {result.txts}")
+              print(f"中文识别耗时: {result.elapse:.2f}s")
+              print(f"置信度: {result.scores}")
 
           print("RapidOCR 中文识别测试完成")
           PYEOF
@@ -154,3 +205,9 @@ jobs:
             测试文件/
             evidence/
           retention-days: 7
+# Trigger: RapidOCR combo test run #5 (2026-10-31)
+
+
+
+
+
