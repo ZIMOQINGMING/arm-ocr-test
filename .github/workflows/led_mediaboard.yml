@@ -148,6 +148,8 @@ jobs:
           '
           cp -r /tmp/mb_pristine mediaboard
           docker run --rm -v "$GITHUB_WORKSPACE:/w" -w /w debian:bookworm bash -c '
+            set -e
+            mkdir -p /w/mediaboard/content /w/mediaboard/fonts
             convert -size 1280x720 "xc:#103050" -pointsize 60 -fill white -gravity center \
               -annotate 0 "MediaBoard v2 Ready" /w/mediaboard/content/00-welcome.png
             chown -R $(stat -c %u:%g /w) /w/mediaboard
