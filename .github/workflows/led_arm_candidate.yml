@@ -1,0 +1,140 @@
+name: LED-candidates-ARM64
+on:
+  push:
+    paths:
+      - ".github/workflows/led_arm_candidate.yml"
+  workflow_dispatch:
+
+jobs:
+  pisignage:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 40
+    steps:
+      - name: Install prereqs
+        run: |
+          sudo apt-get update -qq
+          (sudo apt-get install -y -qq unzip wget chromium 2>&1 | tail -3) || (sudo apt-get install -y -qq unzip wget 2>&1 | tail -3)
+          which chromium chromium-browser || true
+      - name: Download Player2 package
+        run: |
+          wget -q https://pisignage.com/releases/pi-image-p2-v20.zip
+          ls -lh pi-image-p2-v20.zip
+          unzip -o -q pi-image-p2-v20.zip
+          ls player2 | head -30
+          head -60 player2/build-scripts/install-pisignage.sh
+      - name: Run official install script
+        run: |
+          cp player2/build-scripts/install-pisignage.sh .
+          chmod +x install-pisignage.sh
+          chmod +x -R player2/build-scripts player2/shell-scripts || true
+          (sudo ./install-pisignage.sh 2>&1 || true) | tee install_log.txt
+          echo "=== install log tail ==="
+          tail -40 install_log.txt
+      - name: Fingerprint check
+        run: |
+          {
+            echo "== node/chromium versions"
+            node -v 2>&1 || true
+            chromium --version 2>&1 || chromium-browser --version 2>&1 || true
+            echo "== processes"
+            pgrep -af player2 2>&1 || true
+            echo "== installed locations"
+            find / -maxdepth 4 -iname "*pisignage*" -not -path "*/proc/*" 2>/dev/null | head -20
+            echo "== services"
+            systemctl list-units --all 2>/dev/null | grep -iE "pisignage|player2" || true
+          } | tee verify_log.txt
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pisignage-logs
+          path: |
+            install_log.txt
+            verify_log.txt
+
+  anthias:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 45
+    steps:
+      - name: Clone Anthias and discover compose images
+        run: |
+          git clone --depth=1 https://github.com/Screenly/Anthias.git
+          cd Anthias
+          ls
+          find . -maxdepth 2 -name "docker-compose*.yml" -o -maxdepth 2 -name "*.yml" | head -10
+          grep -n "image:" docker-compose.yml 2>/dev/null | head -20 || true
+      - name: Pull arm64 images
+        run: |
+          cd Anthias
+          IMAGES=$(grep -oP 'image:\s*\S+' docker-compose.yml 2>/dev/null | awk '{print $2}' | sed 's/"//g' | sort -u)
+          if [ -z "$IMAGES" ]; then
+            IMAGES="screenly/anthias-viewer:latest screenly/anthias-server:latest screenly/anthias-web:latest screenly/anthias-nginx:latest"
+          fi
+          echo "IMAGES: $IMAGES" | tee images.txt
+          for i in $IMAGES; do
+            echo "== docker pull $i"
+            docker pull "$i" || echo "PULL_FAIL $i"
+          done
+          docker image inspect --format '{{.RepoTags}} arch={{.Architecture}} size={{.Size}}' $(docker images -q | sort -u | head -8) 2>/dev/null || true
+      - name: Save offline bundle
+        run: |
+          cd Anthias
+          IMAGES=$(grep -oP 'image:\s*\S+' docker-compose.yml 2>/dev/null | awk '{print $2}' | sed 's/"//g' | sort -u)
+          OK=""
+          for i in $IMAGES; do
+            docker image inspect "$i" >/dev/null 2>&1 && OK="$OK $i"
+          done
+          if [ -z "$OK" ]; then
+            for i in screenly/anthias-viewer:latest screenly/anthias-server:latest screenly/anthias-web:latest screenly/anthias-nginx:latest; do
+              docker image inspect "$i" >/dev/null 2>&1 && OK="$OK $i"
+            done
+          fi
+          if [ -z "$OK" ]; then echo "NO_IMAGES_PULLED"; exit 3; fi
+          echo "Saving:$OK"
+          docker save $OK | gzip -1 > ../anthias-arm64-images.tar.gz
+          ls -lh ../anthias-arm64-images.tar.gz
+      - name: Upload bundle
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: anthias-arm64-images
+          path: anthias-arm64-images.tar.gz
+
+  xibo:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: xibosignage/electron-player
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Build deps
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq fakeroot dpkg rpm 2>&1 | tail -2
+      - name: Inspect package scripts
+        run: cat package.json | head -40
+      - name: npm install
+        run: npm install 2>&1 | tail -5
+      - name: Build arm64 deb
+        run: |
+          (npm run make 2>&1 || npx electron-forge make --targets deb 2>&1 || true) | tee build_log.txt | tail -25
+      - name: List outputs
+        run: |
+          find out -type f 2>/dev/null | head -20 || true
+          ls -lh out/make/ 2>/dev/null || true
+      - name: Upload deb
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: xibo-player-arm64-deb
+          path: out/make/**/*.deb
+          if-no-files-found: warn
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: xibo-build-log
+          path: build_log.txt
