@@ -1,0 +1,9 @@
+TITLE=叫号信息
+COLOR=#eaf6ff
+GRADIENT=#06283f,#0a3a5c
+SIZE=3.2
+ICON=horn
+CARD=yes
+RADIUS=1
+SHADOW=yes
+PADDING=1.2

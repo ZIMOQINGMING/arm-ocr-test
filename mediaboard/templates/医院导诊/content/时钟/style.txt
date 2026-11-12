@@ -1,0 +1,6 @@
+FORMAT=time
+COLOR=#ffffff
+BGCOLOR=#032033
+CARD=yes
+RADIUS=1
+SIZE=3.6

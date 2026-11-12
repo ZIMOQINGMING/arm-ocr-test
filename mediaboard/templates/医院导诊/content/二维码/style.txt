@@ -1,0 +1,6 @@
+TITLE=扫码挂号
+COLOR=#06263d
+BGCOLOR=#ffffff
+CARD=yes
+RADIUS=1
+PADDING=0.6

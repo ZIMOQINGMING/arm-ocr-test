@@ -1,0 +1,6 @@
+FORMAT=week
+COLOR=#ffd700
+BGCOLOR=#5a0a0a
+CARD=yes
+RADIUS=1
+SIZE=3.2

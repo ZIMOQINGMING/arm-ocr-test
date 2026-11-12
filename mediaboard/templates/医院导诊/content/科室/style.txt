@@ -1,0 +1,9 @@
+SIZE=5
+COLOR=#ffffff
+GRADIENT=#0a5c8a,#0d7bb8
+CARD=yes
+RADIUS=1.2
+SHADOW=yes
+PADDING=2
+ALIGN=center
+BOLD=yes

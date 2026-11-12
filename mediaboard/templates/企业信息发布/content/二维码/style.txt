@@ -1,0 +1,6 @@
+TITLE=
+COLOR=#0b1e3d
+BGCOLOR=#ffffff
+CARD=yes
+RADIUS=1
+PADDING=0.8

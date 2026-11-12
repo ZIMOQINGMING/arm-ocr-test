@@ -1,0 +1,9 @@
+SIZE=9
+COLOR=#ffe066
+BGCOLOR=#032033
+TABNUM=yes
+ALIGN=center
+EFFECT=blink
+CARD=yes
+RADIUS=1
+SHADOW=yes

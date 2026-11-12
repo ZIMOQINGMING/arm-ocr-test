@@ -1,0 +1,8 @@
+SIZE=2.6
+COLOR=#0d4d2b
+BGCOLOR=#d9f2e3
+EFFECT=static
+PADDING=0.8
+CARD=yes
+RADIUS=0.8
+ICON=info

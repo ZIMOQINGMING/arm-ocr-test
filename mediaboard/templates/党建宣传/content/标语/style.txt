@@ -1,0 +1,15 @@
+SIZE=5
+COLOR=#ffd700
+BGCOLOR=#8a1010
+GRADIENT=#7a0d0d,#c01515
+FONT=Noto Serif CJK SC
+BOLD=yes
+ALIGN=center
+EFFECT=static
+PADDING=2
+CARD=yes
+RADIUS=1
+SHADOW=yes
+STROKE=yes
+DECOR=line
+ICON=flag

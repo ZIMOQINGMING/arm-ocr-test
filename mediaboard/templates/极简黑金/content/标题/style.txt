@@ -1,0 +1,10 @@
+SIZE=6
+COLOR=#d4af37
+BGCOLOR=#000000
+FONT=Noto Serif CJK SC
+BOLD=yes
+ALIGN=center
+EFFECT=static
+PADDING=2
+SHADOW=yes
+DECOR=corner

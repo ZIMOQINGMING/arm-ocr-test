@@ -1,0 +1,8 @@
+TITLE=党建动态
+COLOR=#ffe9b0
+BGCOLOR=#4a0a0a
+SIZE=3.2
+ICON=star
+CARD=yes
+RADIUS=1
+GRADIENT=#4a0a0a,#6b0d0d

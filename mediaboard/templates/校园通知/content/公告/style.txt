@@ -1,0 +1,10 @@
+TITLE=今日作息
+COLOR=#12325c
+BGCOLOR=#ffffff
+SIZE=3.4
+ICON=horn
+CARD=yes
+RADIUS=1
+SHADOW=yes
+PADDING=1.2
+TITLE=今日作息

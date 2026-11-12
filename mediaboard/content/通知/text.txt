@@ -1,0 +1,2 @@
+MediaBoard v3 已就绪
+把图片放进 content/主画面/ 即可播放

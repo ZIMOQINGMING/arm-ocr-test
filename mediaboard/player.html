@@ -14,6 +14,9 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#000;overflow:hid
 #notify{position:fixed;top:0;left:0;right:0;display:none;overflow:hidden;z-index:50}
 #screenoff{position:fixed;top:0;left:0;width:100%;height:100%;background:#000;display:none;z-index:99}
 #mb-state{display:none}
+/* 性能档位全局降级（JS 已按档位跳过重特效，这里兜底拦住遗漏） */
+body.perf-low *{text-shadow:none!important;-webkit-mask-image:none!important;mask-image:none!important;box-shadow:none!important}
+body.perf-low *{filter:none!important}
 </style>
 </head>
 <body>
@@ -25,6 +28,7 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#000;overflow:hid
 <div id="screenoff"></div>
 <span id="mb-state">init</span>
 <script src="playlist.js"></script>
+<script src="qr.js"></script>
 <script src="player.js"></script>
 </body>
 </html>

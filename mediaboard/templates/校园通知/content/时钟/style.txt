@@ -1,0 +1,6 @@
+FORMAT=weektime
+COLOR=#12325c
+BGCOLOR=#ffffff
+CARD=yes
+RADIUS=1
+SIZE=3

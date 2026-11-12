@@ -1,0 +1,641 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="google" content="notranslate">
+<title>MediaBoard v3 配置编辑器（离线）</title>
+<style>
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;height:100%;overflow:hidden;font:14px/1.5 'Noto Sans CJK SC','Microsoft YaHei',sans-serif;background:#111;color:#ddd}
+#app{display:flex;height:100%}
+#panel{width:470px;flex:0 0 470px;background:#181a20;overflow-y:auto;padding:14px;border-right:1px solid #2a2d38}
+#previewWrap{flex:1;position:relative;background:#000;display:flex;align-items:center;justify-content:center}
+#preview{width:100%;height:100%;border:0;background:#000}
+h1{font-size:17px;margin:0 0 4px;color:#ffd54a}
+h1 small{color:#888;font-weight:normal;font-size:11px}
+.sec{margin:12px 0;padding:10px;background:#20232c;border-radius:8px}
+.sec>b{display:block;margin-bottom:8px;color:#8ab4f8;font-size:13px}
+.row{display:flex;align-items:center;margin:5px 0;gap:6px;flex-wrap:wrap}
+.row label{flex:0 0 108px;color:#aaa;font-size:12px}
+input[type=text],input[type=number],select,textarea{background:#15171d;color:#eee;border:1px solid #333;border-radius:4px;padding:4px 6px;font:inherit;width:150px}
+input[type=number]{width:72px}
+input[type=color]{width:36px;height:24px;padding:0;border:0;background:none;cursor:pointer}
+textarea{width:320px;height:64px;resize:vertical}
+input[type=range]{width:150px}
+input[type=checkbox]{accent-color:#8ab4f8}
+button{background:#2a3d5c;color:#eee;border:1px solid #3a5280;border-radius:5px;padding:5px 10px;cursor:pointer;font:inherit}
+button:hover{background:#35517a}
+button.warn{background:#5c2a2a;border-color:#803a3a}
+button.primary{background:#1d5c33;border-color:#2a8046;font-weight:bold}
+.pgBtn{display:inline-block;background:#262a35;border:1px solid #3a3f4d;border-radius:4px;padding:4px 8px;margin:2px;cursor:pointer;font-size:12px}
+.pgBtn.sel{background:#31427a;border-color:#5a7acc}
+.pgBtn small{color:#888}
+.zoneBtn{display:flex;justify-content:space-between;width:100%;margin:2px 0;text-align:left}
+.zoneBtn .t{color:#7ab0ff;font-size:11px}
+#timeline{display:flex;height:34px;margin:8px 0;border-radius:6px;overflow:hidden;border:1px solid #333}
+#timeline div{flex:1;display:flex;align-items:center;justify-content:center;font-size:11px;color:#cde;min-width:30px;cursor:pointer}
+#timeline div.sel{outline:2px solid #8ab4f8}
+.hint{color:#777;font-size:11px;margin-top:4px}
+#ready{position:absolute;top:6px;left:8px;color:#4caf50;font-size:12px;z-index:5}
+#toast{position:fixed;top:16px;left:50%;transform:translateX(-50%);background:#2a2a2a;color:#ffe;padding:8px 18px;border-radius:6px;display:none;z-index:99}
+</style>
+</head>
+<body>
+<div id="app">
+<div id="panel">
+  <h1>MediaBoard v3 配置编辑器 <small>离线 · 零依赖 · 改完导出配置包</small></h1>
+
+  <div class="sec"><b>① 全局设置</b>
+    <div class="row"><label>素材切换特效</label>
+      <select id="g_transition">
+        <option>fade</option><option>fade-zoom</option><option>blur-fade</option><option>slide-soft</option>
+        <option>cover-l</option><option>cover-r</option><option>cover-u</option><option>cover-d</option>
+        <option>wipe-l</option><option>wipe-r</option><option>wipe-u</option><option>wipe-d</option>
+        <option>wipe-lu</option><option>wipe-ru</option><option>random</option><option>none</option>
+      </select></div>
+    <div class="row"><label>特效时长(秒)</label><input type="number" id="g_ttime" step="0.1" min="0" max="5" value="0.8">
+      <label style="flex:0 0 90px">性能档位</label>
+      <select id="g_perf"><option>high</option><option>mid</option><option>low</option></select></div>
+    <div class="row"><label>默认停留(秒)</label><input type="number" id="g_duration" min="1" value="10">
+      <label style="flex:0 0 90px">每页默认(秒)</label><input type="number" id="g_pagedur" min="0" value="60"></div>
+    <div class="row"><label>图片填充</label>
+      <select id="g_fill"><option>contain</option><option>cover</option><option>fill</option><option>scale-down</option></select>
+      <label style="flex:0 0 90px">Ken Burns缓推</label>
+      <select id="g_kenburns"><option>no</option><option>yes</option></select></div>
+    <div class="row"><label>背景色</label><input type="color" id="g_bgcolor" value="#000000">
+      <label style="flex:0 0 90px">声音</label>
+      <select id="g_sound"><option>no</option><option>yes</option></select></div>
+    <div class="row"><label>背景图路径</label><input type="text" id="g_bgimage" placeholder="bg/背景.jpg" style="width:200px"></div>
+    <div class="row"><label>定时黑屏</label><input type="text" id="g_screenoff" placeholder="22:30-07:30" style="width:110px">
+      <label style="flex:0 0 90px">通知分钟</label><input type="number" id="g_notifymin" value="5"></div>
+  </div>
+
+  <div class="sec"><b>② 节目页（时间轴）</b>
+    <div id="timeline"></div>
+    <div class="row">
+      <button id="pgAdd" class="primary">+ 添加节目页</button>
+      <button id="pgDel" class="warn">删除当前页</button>
+      <button id="pgUp">←前移</button><button id="pgDown">后移→</button>
+    </div>
+    <div class="row"><label>当前页停留秒</label><input type="number" id="pgDur" min="0" value="30">
+      <span class="hint">页按顺序循环播放</span></div>
+    <div class="row">
+      <select id="zoneType">
+        <option value="文件">文件窗(图片/视频)</option><option value="文本">文本窗</option>
+        <option value="时钟">时钟窗</option><option value="计时">计时窗</option>
+        <option value="二维码">二维码窗</option><option value="公告">公告列表窗</option>
+      </select>
+      <button id="zoneAdd" class="primary">+ 添加分区</button>
+    </div>
+    <div id="zoneList"></div>
+  </div>
+
+  <div class="sec"><b>③ 选中分区属性</b>
+    <div id="zoneProps"><div class="hint">先在上方点选一个分区</div></div>
+  </div>
+
+  <div class="sec"><b>④ 底部滚动字幕</b>
+    <div class="row"><label>内容</label><textarea id="tk_text" placeholder="每行一段，滚动显示"></textarea></div>
+    <div class="row"><label>效果</label>
+      <select id="tk_effect"><option>scroll-left</option><option>scroll-up</option><option>blink</option><option>static</option><option>typewriter</option></select>
+      <label style="flex:0 0 60px">速度px/s</label><input type="number" id="tk_speed" value="90"></div>
+    <div class="row"><label>字号vh/条高vh</label><input type="number" id="tk_size" step="0.5" value="5.5"><input type="number" id="tk_height" value="9">
+      <label style="flex:0 0 60px">加粗</label><select id="tk_bold"><option>yes</option><option>no</option></select></div>
+    <div class="row"><label>字色/底色</label><input type="color" id="tk_color" value="#ffff00"><input type="color" id="tk_bgcolor" value="#1a3a6b">
+      <label style="flex:0 0 60px">两端渐隐</label><select id="tk_mask"><option>yes</option><option>no</option></select></div>
+    <div class="row"><label>分隔符</label><input type="text" id="tk_sep" placeholder="　　●　　" style="width:110px"></div>
+  </div>
+
+  <div class="sec"><b>⑤ 顶部通知插播</b>
+    <div class="row"><label>通知文字</label><textarea id="nf_text" placeholder="留空=不显示"></textarea></div>
+  </div>
+
+  <div class="sec"><b>⑥ 素材导入（仅本机预览用）</b>
+    <input type="file" id="mediaPick" multiple accept="image/*,video/*">
+    <div class="hint">选中的图片/视频会立即显示在选中"文件窗"的预览里；导出时会生成《素材清单.txt》告诉您拷到哪个目录。</div>
+  </div>
+
+  <div class="sec"><b>⑦ 导出 / 导入</b>
+    <div class="row">
+      <button id="btnExport" class="primary">导出配置包(ZIP)</button>
+      <button id="btnSave">手动存草稿</button>
+      <button id="btnReset" class="warn">清空重来</button>
+    </div>
+    <div class="row">
+      <input type="file" id="cfgPick" multiple accept=".txt" style="width:260px">
+      <span class="hint">可导入现有 layout.txt / settings.txt / ticker.txt 改</span>
+    </div>
+    <div class="hint" id="saveState">草稿自动保存在本机浏览器（localStorage），断电不丢。</div>
+  </div>
+</div>
+<div id="previewWrap">
+  <span id="ready">预览未就绪</span>
+  <iframe id="preview" src="player.html"></iframe>
+</div>
+</div>
+<div id="toast"></div>
+<script src="ziputil.js"></script>
+<script>
+"use strict";
+/* ---------- 状态模型 ---------- */
+function blankZone(type, n) {
+  var z = { name: type + (n || 1), type: type, x: 0, y: 0, w: 30, h: 30, dur: "",
+    margin: 0, padding: 0, alignv: "middle", radius: "", card: false, useGrad: false,
+    gradA: "#0b1e3d", gradB: "#1a3a6b", shadow: false, stroke: false, tabnum: false,
+    icon: "", decor: "", group: "", groupcols: "",
+    text: "", font: "", size: 6, color: "#ffffff", bgcolor: "#222222", bold: true, italic: false,
+    align: "center", effect: "static", speed: 60, linespacing: 1.5,
+    clockFmt: "datetime", clockMode: "digital",
+    target: "", title: "",
+    qrText: "https://example.com", qrEcl: "M",
+    noticeTitle: "通知公告", datasrc: "", refresh: "",
+    slides: [], slideFiles: [] };
+  if (type === "文件") { z.name = "主画面" + (n > 1 ? n : ""); z.x = 0; z.y = 0; z.w = 70; z.h = 86; }
+  if (type === "文本") { z.name = "文本区" + (n > 1 ? n : ""); z.text = "在此输入文字内容\n第二行"; }
+  if (type === "时钟") { z.name = "时钟"; z.x = 70; z.y = 0; z.w = 30; z.h = 28; z.tabnum = true; }
+  if (type === "计时") { z.name = "倒计时"; z.x = 70; z.y = 58; z.w = 30; z.h = 28; z.target = "2027-01-01 09:00"; z.title = "倒计时"; }
+  if (type === "二维码") { z.name = "二维码"; z.x = 70; z.y = 28; z.w = 30; z.h = 30; z.bgcolor = "#ffffff"; z.color = "#111111"; z.title = "扫码了解更多"; }
+  if (type === "公告") { z.name = "公告区"; z.x = 70; z.y = 28; z.w = 30; z.h = 30; z.text = "08:30 全体例会\n09:00 设备巡检\n14:00 安全培训"; z.noticeTitle = "今日通知"; z.icon = "horn"; z.effect = ""; }
+  return z;
+}
+var S = {
+  settings: { transition: "fade", ttime: 0.8, perf: "high", duration: 10, pagedur: 60,
+    fill: "contain", kenburns: "no", bgcolor: "#000000", bgimage: "", sound: "no",
+    screenoff: "", notifymin: 5, reload: 30 },
+  ticker: { text: "欢迎使用 MediaBoard v3 离线多媒体看板", effect: "scroll-left", speed: 90,
+    size: 5.5, height: 9, color: "#ffff00", bgcolor: "#1a3a6b", bold: "yes", mask: "yes", sep: "" },
+  notify: { text: "" },
+  pages: [{ duration: 30, zones: [blankZone("文件", 1)] }]
+};
+var pgIdx = 0, zIdx = 0;
+var fonts = ["Noto Sans CJK SC", "WenQuanYi Micro Hei", "sans-serif", "serif", "monospace"];
+
+/* ---------- 工具 ---------- */
+function $(id) { return document.getElementById(id); }
+function curPage() { return S.pages[pgIdx] || S.pages[0]; }
+function curZone() { var p = curPage(); return p ? p.zones[zIdx] : null; }
+function toast(msg) {
+  var t = $("toast"); t.textContent = msg; t.style.display = "block";
+  setTimeout(function () { t.style.display = "none"; }, 2200);
+}
+function esc(s) { return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;"); }
+function saveDraft() {
+  try { localStorage.setItem("mbEditorDraft", JSON.stringify(S)); $("saveState").textContent = "草稿已保存 " + new Date().toLocaleTimeString(); } catch (e) {}
+}
+var saveT = null;
+function saveDraftSoon() { clearTimeout(saveT); saveT = setTimeout(saveDraft, 600); }
+
+/* ---------- 配置 -> 预览 playlist ---------- */
+function zoneOut(z) {
+  var o = { name: z.name, x: z.x, y: z.y, w: z.w, h: z.h };
+  if (z.dur !== "" && !isNaN(parseFloat(z.dur))) { o.duration = parseFloat(z.dur); }
+  ["margin", "padding", "alignv", "icon", "decor", "group", "groupcols"].forEach(function (k) {
+    if (z[k] !== "" && z[k] != null && !(k === "margin" && !z[k]) && !(k === "padding" && !z[k])) { o[k] = z[k]; }
+  });
+  if (z.radius !== "" && !isNaN(parseFloat(z.radius))) { o.radius = parseFloat(z.radius); }
+  if (z.card) { o.card = true; }
+  if (z.useGrad) { o.gradient = z.gradA + "," + z.gradB; }
+  if (z.shadow) { o.shadow = true; }
+  if (z.stroke) { o.stroke = true; }
+  if (z.tabnum) { o.tabnum = true; }
+  var T = z.type;
+  if (T === "文本") { o.text = { content: z.text, font: z.font || undefined, size: z.size, color: z.color, bgcolor: z.bgcolor, bold: z.bold, italic: z.italic, align: z.align, effect: z.effect, speed: z.speed, linespacing: z.linespacing }; }
+  else if (T === "时钟") { o.clock = { format: z.clockFmt, mode: z.clockMode, font: z.font || undefined, size: z.size / 1.2, color: z.color, bgcolor: z.bgcolor }; }
+  else if (T === "计时") { o.countdown = { target: z.target, title: z.title, size: z.size / 1.2, color: z.color, bgcolor: z.bgcolor }; }
+  else if (T === "二维码") { o.qr = { content: z.qrText, title: z.title, color: z.color, bgcolor: z.bgcolor, ecl: z.qrEcl }; }
+  else if (T === "公告") { o.notice = { content: z.text, title: z.noticeTitle, size: Math.min(z.size, 3.2), color: z.color, bgcolor: z.bgcolor, icon: z.icon, speed: z.speed, datasrc: z.datasrc || undefined, refresh: z.refresh || undefined }; }
+  else { o.slides = z.slides || []; if (z.group) { o.group = z.group; } }
+  return o;
+}
+function buildPlaylist() {
+  return {
+    duration: S.settings.duration, sound: S.settings.sound === "yes",
+    reloadMinutes: 0, fill: S.settings.fill,
+    transition: S.settings.transition, transitionTime: parseFloat(S.settings.ttime) || 0.8,
+    perf: S.settings.perf, kenburns: S.settings.kenburns === "yes",
+    bgimage: S.settings.bgimage || undefined, bgcolor: S.settings.bgcolor,
+    screenOff: S.settings.screenoff || undefined,
+    notify: S.notify.text ? { text: S.notify.text, minutes: S.settings.notifymin } : undefined,
+    ticker: { text: S.ticker.text, effect: S.ticker.effect, speed: S.ticker.speed,
+      size: S.ticker.size, color: S.ticker.color, bgcolor: S.ticker.bgcolor,
+      bold: S.ticker.bold === "yes", height: S.ticker.height,
+      sep: S.ticker.sep || undefined, mask: S.ticker.mask === "yes",
+      font: undefined },
+    fontfaces: [],
+    pages: S.pages.map(function (pg) { return { duration: pg.duration, zones: pg.zones.map(zoneOut) }; })
+  };
+}
+
+/* ---------- 预览推送 ---------- */
+var pushT = null;
+function pushPreview() {
+  clearTimeout(pushT);
+  pushT = setTimeout(function () {
+    try {
+      var fw = $("preview").contentWindow;
+      fw.postMessage({ mbConfig: buildPlaylist() }, "*");
+      $("ready").textContent = "实时预览中 · " + S.settings.perf + " 档";
+    } catch (e) { $("ready").textContent = "预览失败:" + e.message; }
+  }, 200);
+}
+
+/* ---------- 表单 ---------- */
+function bind(id, path, conv) {
+  var el = $(id);
+  if (!el) { return; }
+  var parts = path.split(".");
+  function get() { var v = S; for (var i = 0; i < parts.length; i++) { v = v[parts[i]]; } return v; }
+  function set(v2) { var o = S, i2; for (i2 = 0; i2 < parts.length - 1; i2++) { o = o[parts[i2]]; } o[parts[parts.length - 1]] = v2; }
+  if (el.type === "checkbox") { el.checked = !!get(); el.onchange = function () { set(el.checked); saveDraftSoon(); pushPreview(); refreshStruct(); }; }
+  else { el.oninput = el.onchange = function () { set(conv ? conv(el.value) : el.value); saveDraftSoon(); pushPreview(); }; }
+}
+var RGBOK = /^#[0-9a-fA-F]{6}$/;
+function optSel(id, val) { var el = $(id); if (!el) { return; } el.value = val; }
+
+function renderStruct() {
+  // 时间轴
+  var tl = $("timeline"); tl.innerHTML = "";
+  var total = S.pages.reduce(function (a, p) { return a + Math.max(1, +p.duration || 1); }, 0);
+  S.pages.forEach(function (p, i) {
+    var d = document.createElement("div");
+    d.style.flex = Math.max(0.5, (+p.duration || 1) / total);
+    d.style.background = i === pgIdx ? "#2b4a86" : "#20232c";
+    d.textContent = "第" + (i + 1) + "页 " + p.duration + "s";
+    if (i === pgIdx) { d.className = "sel"; }
+    d.onclick = function () { pgIdx = i; zIdx = 0; renderStruct(); renderZoneProps(); pushPreview(); };
+    tl.appendChild(d);
+  });
+  // 分区按钮列表
+  var zl = $("zoneList"); zl.innerHTML = "";
+  curPage().zones.forEach(function (z, i) {
+    var b = document.createElement("button");
+    b.className = "zoneBtn";
+    b.innerHTML = "<span>" + esc(z.name) + "</span><span class='t'>" + z.type + " " + z.x + "," + z.y + " " + z.w + "x" + z.h + "</span>";
+    if (i === zIdx) { b.style.borderColor = "#8ab4f8"; }
+    b.onclick = function () { zIdx = i; renderStruct(); renderZoneProps(); };
+    var del = document.createElement("button");
+    del.className = "warn"; del.textContent = "×"; del.style.flex = "0 0 30px";
+    del.onclick = function (ev) { ev.stopPropagation(); curPage().zones.splice(i, 1); if (zIdx >= curPage().zones.length) { zIdx = 0; } renderStruct(); renderZoneProps(); pushPreview(); };
+    b.appendChild(del);
+    zl.appendChild(b);
+  });
+  $("pgDur").value = curPage().duration;
+  saveDraftSoon();
+}
+
+function row(label, inner) { return "<div class='row'><label>" + label + "</label>" + inner + "</div>"; }
+function sel(id, opts, cur) {
+  return "<select id='" + id + "'>" + opts.map(function (o) {
+    var v = typeof o === "string" ? o : o.v, t = typeof o === "string" ? o : o.t;
+    return "<option" + (v === cur ? " selected" : "") + ">" + v + "</option>";
+  }).join("") + "</select>";
+}
+function colorSel(id, v) { return "<input type='color' id='" + id + "' value='" + (RGBOK.test(v) ? v : "#000000") + "'>"; }
+
+function renderZoneProps() {
+  var box = $("zoneProps");
+  var z = curZone();
+  if (!z) { box.innerHTML = "<div class='hint'>先在上方点选一个分区</div>"; return; }
+  var H = [];
+  function add(label, inner) { H.push(row(label, inner)); }
+  function note(txt) { H.push("<div class='hint'>" + txt + "</div>"); }
+
+  add("分区名称", "<input type='text' id='z_name' value=\"" + esc(z.name) + "\">");
+  add("位置 x,y (%)", "<input type='number' id='z_x' value='" + z.x + "'><input type='number' id='z_y' value='" + z.y + "'>");
+  add("大小 w,h (%)", "<input type='number' id='z_w' value='" + z.w + "'><input type='number' id='z_h' value='" + z.h + "'>");
+  add("素材停留秒", "<input type='number' id='z_dur' value='" + (z.dur === "" ? "" : z.dur) + "' placeholder='默认'>");
+  add("外距MARGIN%", "<input type='number' id='z_margin' min='0' max='10' value='" + (z.margin || 0) + "'>"
+    + "<label style='flex:0 0 100px'>内距PADDINGvh</label><input type='number' id='z_padding' min='0' max='8' value='" + (z.padding || 0) + "'>");
+  add("垂直对齐", sel("z_alignv", ["top", "middle", "bottom"], z.alignv || "middle")
+    + "<label style='flex:0 0 80px'>圆角vh</label><input type='number' id='z_radius' min='0' max='10' value='" + (z.radius === "" ? "" : z.radius) + "' placeholder='空=不用'>");
+  add("卡片投影", "<input type='checkbox' id='z_card'" + (z.card ? " checked" : "") + ">"
+    + "<label style='flex:0 0 80px'>文字阴影</label><input type='checkbox' id='z_shadow'" + (z.shadow ? " checked" : "") + ">"
+    + "<label style='flex:0 0 80px'>白字描边</label><input type='checkbox' id='z_stroke'" + (z.stroke ? " checked" : "") + ">");
+  add("渐变底色", "<input type='checkbox' id='z_usegrad'" + (z.useGrad ? " checked" : "") + ">"
+    + colorSel("z_gradA", z.gradA) + colorSel("z_gradB", z.gradB) + "<span class='hint'>勾选=135°渐变底</span>");
+  add("图标", sel("z_icon", ["", "info", "warn", "star", "clock", "horn", "check", "flag"], z.icon || "")
+    + "<label style='flex:0 0 60px'>装饰</label>" + sel("z_decor", ["", "line", "corner"], z.decor || ""));
+
+  var T = z.type;
+  if (T === "文件") {
+    add("展示方式", sel("z_group", [{ v: "", t: "轮播（逐张切换）" }, { v: "grid", t: "九宫格（全部铺开）" }], z.group || "")
+      + "<label style='flex:0 0 60px'>列数</label><input type='number' id='z_groupcols' min='1' max='8' value='" + (z.groupcols === "" ? "" : z.groupcols) + "' placeholder='自动'>");
+    note("图片/视频放 content/" + esc(z.name) + "/ 目录（导出包里有清单）。面板第⑥区「素材导入」可选本机文件即时预览。");
+  } else if (T === "文本") {
+    add("文字内容", "<textarea id='z_text'>" + esc(z.text) + "</textarea>");
+    add("字体", "<input type='text' id='z_font' list='fontList' value=\"" + esc(z.font) + "\" placeholder='系统默认'><datalist id='fontList'>" + fonts.map(function (f) { return "<option>" + esc(f) + "</option>"; }).join("") + "</datalist>");
+    add("字号vh", "<input type='range' id='z_size' min='1' max='15' step='0.5' value='" + z.size + "'><span id='z_size_v'>" + z.size + "</span>"
+      + "<label style='flex:0 0 60px'>加粗</label><input type='checkbox' id='z_bold'" + (z.bold ? " checked" : "") + ">");
+    add("字色/底色", colorSel("z_color", z.color) + colorSel("z_bgcolor", z.bgcolor)
+      + "<label style='flex:0 0 60px'>斜体</label><input type='checkbox' id='z_italic'" + (z.italic ? " checked" : "") + ">");
+    add("对齐", sel("z_align", ["left", "center", "right"], z.align)
+      + "<label style='flex:0 0 60px'>效果</label>" + sel("z_effect", ["static", "scroll-left", "scroll-up", "blink", "typewriter"], z.effect));
+    add("速度px/s", "<input type='number' id='z_speed' value='" + z.speed + "'>"
+      + "<label style='flex:0 0 80px'>行距倍数</label><input type='number' id='z_lsp' step='0.1' value='" + z.linespacing + "'>");
+  } else if (T === "时钟") {
+    add("格式", sel("z_clockFmt", ["datetime", "date", "time", "week", "weektime"], z.clockFmt)
+      + "<label style='flex:0 0 60px'>表盘</label>" + sel("z_clockMode", ["digital", "dial"], z.clockMode));
+    add("字色/底色", colorSel("z_color", z.color) + colorSel("z_bgcolor", z.bgcolor)
+      + "<label style='flex:0 0 60px'>字号vh</label><input type='number' id='z_size' step='0.5' value='" + z.size + "'>");
+  } else if (T === "计时") {
+    add("目标时刻", "<input type='text' id='z_target' value=\"" + esc(z.target) + "\" placeholder='2027-01-01 09:00（空=正计时）'>");
+    add("标题", "<input type='text' id='z_title' value=\"" + esc(z.title) + "\">");
+    add("字色/底色", colorSel("z_color", z.color) + colorSel("z_bgcolor", z.bgcolor));
+  } else if (T === "二维码") {
+    add("二维码内容", "<textarea id='z_qrText'>" + esc(z.qrText) + "</textarea>");
+    add("纠错级别", sel("z_qrEcl", ["L", "M", "Q", "H"], z.qrEcl)
+      + "<label style='flex:0 0 50px'>标题</label><input type='text' id='z_title' value=\"" + esc(z.title) + "\">");
+    add("码色/底色", colorSel("z_color", z.color) + colorSel("z_bgcolor", z.bgcolor));
+  } else if (T === "公告") {
+    add("公告条目", "<textarea id='z_text'>" + esc(z.text) + "</textarea>");
+    note("每行一条；超长自动上滚。");
+    add("标题", "<input type='text' id='z_title' value=\"" + esc(z.noticeTitle) + "\">");
+    add("字色/底色", colorSel("z_color", z.color) + colorSel("z_bgcolor", z.bgcolor));
+    add("数据源JSON", "<input type='text' id='z_datasrc' value=\"" + esc(z.datasrc) + "\" placeholder='data/值班表.json（可选）' style='width:160px'>"
+      + "<label style='flex:0 0 50px'>刷新分</label><input type='number' id='z_refresh' value='" + (z.refresh === "" ? "" : z.refresh) + "' placeholder='不刷'>");
+  }
+  box.innerHTML = H.join("");
+
+  function hook(id, path) {
+    var el = $("z_" + id);
+    if (!el) { return; }
+    el.oninput = el.onchange = function () {
+      var v = el.type === "checkbox" ? el.checked : el.value;
+      var o = z, ks = path.split("."), i;
+      for (i = 0; i < ks.length - 1; i++) { o = o[ks[i]]; }
+      o[ks[ks.length - 1]] = v;
+      if (el.type === "range" && $("z_size_v")) { $("z_size_v").textContent = v; }
+      renderStruct();
+      saveDraftSoon();
+      pushPreview();
+    };
+  }
+  hook("name", "name"); hook("x", "x"); hook("y", "y"); hook("w", "w"); hook("h", "h"); hook("dur", "dur");
+  hook("margin", "margin"); hook("padding", "padding"); hook("alignv", "alignv"); hook("radius", "radius");
+  hook("card", "card"); hook("shadow", "shadow"); hook("stroke", "stroke"); hook("usegrad", "useGrad");
+  hook("gradA", "gradA"); hook("gradB", "gradB"); hook("icon", "icon"); hook("decor", "decor");
+  hook("group", "group"); hook("groupcols", "groupcols");
+  hook("text", "text"); hook("font", "font"); hook("size", "size"); hook("color", "color"); hook("bgcolor", "bgcolor");
+  hook("bold", "bold"); hook("italic", "italic"); hook("align", "align"); hook("effect", "effect");
+  hook("speed", "speed"); hook("lsp", "linespacing");
+  hook("clockFmt", "clockFmt"); hook("clockMode", "clockMode");
+  hook("target", "target"); hook("title", "title");
+  hook("qrText", "qrText"); hook("qrEcl", "qrEcl");
+  hook("datasrc", "datasrc"); hook("refresh", "refresh");
+  var tEl = $("z_title");
+  if (tEl && z.type === "公告") {
+    tEl.oninput = function () { z.noticeTitle = tEl.value; saveDraftSoon(); pushPreview(); };
+  }
+}
+
+function refreshStruct() { renderStruct(); }
+
+/* ---------- 顶层控件绑定 ---------- */
+bind("g_transition", "settings.transition");
+bind("g_ttime", "settings.ttime", parseFloat);
+bind("g_perf", "settings.perf");
+bind("g_duration", "settings.duration", parseInt);
+bind("g_pagedur", "settings.pagedur", parseInt);
+bind("g_fill", "settings.fill");
+bind("g_kenburns", "settings.kenburns");
+bind("g_bgcolor", "settings.bgcolor");
+bind("g_bgimage", "settings.bgimage");
+bind("g_sound", "settings.sound");
+bind("g_screenoff", "settings.screenoff");
+bind("g_notifymin", "settings.notifymin", parseFloat);
+["text", "effect", "speed", "size", "height", "color", "bgcolor", "bold", "mask", "sep"].forEach(function (k) {
+  bind("tk_" + k, "ticker." + k);
+});
+bind("nf_text", "notify.text");
+$("pgAdd").onclick = function () { S.pages.push({ duration: 30, zones: [blankZone("文本", S.pages.length + 1)] }); pgIdx = S.pages.length - 1; zIdx = 0; renderStruct(); renderZoneProps(); pushPreview(); };
+$("pgDel").onclick = function () { if (S.pages.length > 1) { S.pages.splice(pgIdx, 1); pgIdx = Math.min(pgIdx, S.pages.length - 1); renderStruct(); renderZoneProps(); pushPreview(); } };
+$("pgUp").onclick = function () { if (pgIdx > 0) { var p = S.pages.splice(pgIdx, 1)[0]; S.pages.splice(--pgIdx, 0, p); renderStruct(); pushPreview(); } };
+$("pgDown").onclick = function () { if (pgIdx < S.pages.length - 1) { var p = S.pages.splice(pgIdx, 1)[0]; S.pages.splice(++pgIdx, 0, p); renderStruct(); pushPreview(); } };
+$("pgDur").oninput = function () { curPage().duration = parseFloat($("pgDur").value) || 0; renderStruct(); pushPreview(); };
+$("zoneAdd").onclick = function () {
+  var t = $("zoneType").value;
+  var cnt = curPage().zones.filter(function (z2) { return z2.type === t; }).length + 1;
+  curPage().zones.push(blankZone(t, cnt));
+  zIdx = curPage().zones.length - 1;
+  renderStruct(); renderZoneProps(); pushPreview();
+};
+$("mediaPick").onchange = function () {
+  var z = curZone();
+  if (!z) { toast("请先选中一个分区"); return; }
+  z.slides = []; z.slideFiles = [];
+  Array.prototype.forEach.call($("mediaPick").files, function (f) {
+    z.slideFiles.push(f.name);
+    z.slides.push(URL.createObjectURL(f));
+  });
+  toast("已为「" + z.name + "」载入 " + z.slides.length + " 个素材（仅预览用）");
+  pushPreview();
+};
+$("btnSave").onclick = function () { saveDraft(); toast("草稿已保存"); };
+$("btnReset").onclick = function () {
+  if (!confirm("确定清空当前配置、恢复默认？")) { return; }
+  try { localStorage.removeItem("mbEditorDraft"); } catch (e) {}
+  location.reload();
+};
+$("btnExport").onclick = function () {
+  var files = exportFiles();
+  MBZip.download(files, "mediaboard-config.zip");
+  toast("已导出 mediaboard-config.zip（" + files.length + " 个文件）");
+};
+/* 导入现有配置 */
+$("cfgPick").onchange = function () {
+  var picked = {};
+  Array.prototype.forEach.call($("cfgPick").files, function (f) { picked[f.name] = f; });
+  var names = ["settings.txt", "ticker.txt", "layout.txt"].filter(function (k) { return picked[k]; });
+  if (!names.length) { toast("未识别到 settings/ticker/layout 文件"); return; }
+  var pending = names.length;
+  function finishOne() {
+    if (--pending === 0) {
+      pgIdx = 0; zIdx = 0;
+      syncTopForm(); renderStruct(); renderZoneProps(); pushPreview();
+      toast("配置已导入（文本内容请在分区属性里核对）");
+    }
+  }
+  function read(f, cb) {
+    var r = new FileReader();
+    r.onload = function () { cb(String(r.result)); finishOne(); };
+    r.readAsText(f, "utf-8");
+  }
+  names.forEach(function (k) {
+    read(picked[k], function (txt) {
+      if (k === "settings.txt") {
+        txt.split(/\r?\n/).forEach(function (ln) {
+          var kv = ln.split("="); if (kv.length < 2) { return; }
+          var key = kv[0].trim(), v = kv.slice(1).join("=").trim();
+          var map = { TRANSITION: "transition", TRANSITION_TIME: "ttime", PERF: "perf", KENBURNS: "kenburns",
+            DURATION: "duration", PAGE_DURATION: "pagedur", FILL: "fill", BGCOLOR: "bgcolor",
+            BGIMAGE: "bgimage", SOUND: "sound", SCREEN_OFF: "screenoff" };
+          if (map[key]) { S.settings[map[key]] = v; }
+        });
+        syncTopForm();
+      } else if (k === "ticker.txt") {
+        S.ticker.text = txt.trim();
+        $("tk_text").value = S.ticker.text;
+      } else {
+        var pages = [{ duration: parseFloat(S.settings.pagedur) || 60, zones: [] }];
+        txt.split(/\r?\n/).forEach(function (ln) {
+          ln = ln.trim(); if (!ln || ln.charAt(0) === "#") { return; }
+          if (ln.indexOf("---") === 0) {
+            var d = parseFloat(ln.slice(3));
+            pages[pages.length - 1].duration = isFinite(d) && d > 0 ? d : (parseFloat(S.settings.pagedur) || 60);
+            pages.push({ duration: parseFloat(S.settings.pagedur) || 60, zones: [] });
+            return;
+          }
+          var eq = ln.indexOf("="); if (eq < 0) { return; }
+          var name = ln.slice(0, eq).trim();
+          var rest = ln.slice(eq + 1).trim().split(",");
+          if (rest.length >= 4) {
+            var z = blankZone("文件", 1);
+            z.name = name;
+            z.x = parseFloat(rest[0]) || 0; z.y = parseFloat(rest[1]) || 0;
+            z.w = parseFloat(rest[2]) || 30; z.h = parseFloat(rest[3]) || 30;
+            z.dur = rest[4] !== "" && !isNaN(parseFloat(rest[4])) ? rest[4] : "";
+            var t = rest[5] || "";
+            if (t === "文本" || t === "时钟" || t === "计时" || t === "二维码" || t === "公告") { z.type = t; }
+            else if (!t) {
+              if (/时钟/.test(name)) { z.type = "时钟"; }
+              else if (/计时|倒计时/.test(name)) { z.type = "计时"; }
+              else if (/二维码|扫码/.test(name)) { z.type = "二维码"; }
+              else if (/公告|列表/.test(name)) { z.type = "公告"; }
+              else if (/文本|文字/.test(name)) { z.type = "文本"; }
+            }
+            pages[pages.length - 1].zones.push(z);
+          }
+        });
+        if (pages[pages.length - 1].zones.length === 0) { pages.pop(); }
+        if (pages.length) { S.pages = pages; }
+      }
+    });
+  });
+};
+function syncTopForm() {
+  $("g_transition").value = S.settings.transition; $("g_ttime").value = S.settings.ttime;
+  $("g_perf").value = S.settings.perf; $("g_duration").value = S.settings.duration;
+  $("g_pagedur").value = S.settings.pagedur; $("g_fill").value = S.settings.fill;
+  $("g_kenburns").value = S.settings.kenburns; $("g_bgcolor").value = S.settings.bgcolor;
+  $("g_bgimage").value = S.settings.bgimage; $("g_sound").value = S.settings.sound;
+  $("g_screenoff").value = S.settings.screenoff; $("g_notifymin").value = S.settings.notifymin;
+}
+
+/* ---------- 导出 ---------- */
+function kvLine(k, v) { return v === "" || v == null ? "" : k + "=" + v + "\n"; }
+function exportFiles() {
+  var files = [];
+  var st = S.settings;
+  var s = "";
+  s += kvLine("DURATION", st.duration); s += kvLine("SOUND", st.sound);
+  s += kvLine("RELOAD_MINUTES", st.reload);
+  s += kvLine("FILL", st.fill); s += kvLine("TRANSITION", st.transition);
+  s += kvLine("TRANSITION_TIME", st.ttime);
+  s += kvLine("PERF", st.perf); s += kvLine("KENBURNS", st.kenburns);
+  s += kvLine("TWINKLE", "no"); s += kvLine("PAGE_DURATION", st.pagedur);
+  s += kvLine("BGIMAGE", st.bgimage); s += kvLine("BGCOLOR", st.bgcolor);
+  s += kvLine("SCREEN_OFF", st.screenoff); s += kvLine("NOTIFY_MINUTES", st.notifymin);
+  s += kvLine("TICKER_EFFECT", S.ticker.effect); s += kvLine("TICKER_SPEED", S.ticker.speed);
+  s += kvLine("TICKER_SIZE", S.ticker.size); s += kvLine("TICKER_COLOR", S.ticker.color);
+  s += kvLine("TICKER_BGCOLOR", S.ticker.bgcolor); s += kvLine("TICKER_BOLD", S.ticker.bold);
+  s += kvLine("TICKER_HEIGHT", S.ticker.height); s += kvLine("TICKER_SEP", S.ticker.sep);
+  s += kvLine("TICKER_MASK", S.ticker.mask);
+  files.push({ name: "settings.txt", content: s });
+  var L = "";
+  S.pages.forEach(function (pg, pi) {
+    if (pi > 0) { L += "--- " + pg.duration + "\n"; }
+    pg.zones.forEach(function (z) {
+      L += z.name + "=" + z.x + "," + z.y + "," + z.w + "," + z.h
+        + (z.dur !== "" && !isNaN(parseFloat(z.dur)) ? "," + z.dur : ",")
+        + (z.type !== "文件" ? "," + z.type : "") + "\n";
+      var dir = "content/" + z.name + "/";
+      var sty = "";
+      if (z.type === "文件" && z.group) { sty += kvLine("GROUP", z.group); if (z.groupcols) { sty += kvLine("GROUPCOLS", z.groupcols); } }
+      if (z.type === "文本") {
+        files.push({ name: dir + "text.txt", content: (z.text || "") + "\n" });
+        sty += kvLine("FONT", z.font); sty += kvLine("SIZE", z.size); sty += kvLine("COLOR", z.color);
+        sty += kvLine("BGCOLOR", z.bgcolor); sty += kvLine("BOLD", z.bold ? "yes" : "no");
+        sty += kvLine("ITALIC", z.italic ? "yes" : "no"); sty += kvLine("ALIGN", z.align);
+        sty += kvLine("EFFECT", z.effect); sty += kvLine("SPEED", z.speed); sty += kvLine("LINESPACING", z.linespacing);
+      }
+      if (z.type === "时钟") {
+        sty += kvLine("FORMAT", z.clockFmt); sty += kvLine("MODE", z.clockMode);
+        sty += kvLine("SIZE", z.size); sty += kvLine("COLOR", z.color); sty += kvLine("BGCOLOR", z.bgcolor);
+      }
+      if (z.type === "计时") {
+        sty += kvLine("TARGET", z.target); sty += kvLine("TITLE", z.title);
+        sty += kvLine("COLOR", z.color); sty += kvLine("BGCOLOR", z.bgcolor); sty += kvLine("SIZE", z.size);
+      }
+      if (z.type === "二维码") {
+        files.push({ name: dir + "text.txt", content: (z.qrText || "") + "\n" });
+        sty += kvLine("TITLE", z.title); sty += kvLine("COLOR", z.color); sty += kvLine("BGCOLOR", z.bgcolor); sty += kvLine("ECL", z.qrEcl);
+      }
+      if (z.type === "公告") {
+        files.push({ name: dir + "text.txt", content: (z.text || "") + "\n" });
+        sty += kvLine("TITLE", z.noticeTitle); sty += kvLine("COLOR", z.color); sty += kvLine("BGCOLOR", z.bgcolor);
+        sty += kvLine("ICON", z.icon); if (z.speed && z.effect !== "static") { sty += kvLine("SPEED", z.speed); }
+        if (z.datasrc) { sty += kvLine("DATASRC", z.datasrc); sty += kvLine("REFRESH", z.refresh); }
+      }
+      // 分区级视觉键（对所有类型有效）
+      var vsty = "";
+      vsty += kvLine("PADDING", z.padding); vsty += kvLine("MARGIN", z.margin);
+      vsty += kvLine("ALIGNV", z.alignv !== "middle" ? z.alignv : "");
+      if (z.radius !== "" && !isNaN(parseFloat(z.radius))) { vsty += kvLine("RADIUS", z.radius); }
+      vsty += kvLine("CARD", z.card ? "yes" : "");
+      if (z.useGrad) { vsty += kvLine("GRADIENT", z.gradA + "," + z.gradB); }
+      vsty += kvLine("SHADOW", z.shadow ? "yes" : ""); vsty += kvLine("STROKE", z.stroke ? "yes" : "");
+      vsty += kvLine("TABNUM", z.tabnum ? "yes" : ""); vsty += kvLine("ICON", z.icon); vsty += kvLine("DECOR", z.decor);
+      if ((sty + vsty).trim()) { files.push({ name: dir + "style.txt", content: sty + vsty }); }
+    });
+  });
+  files.push({ name: "layout.txt", content: L });
+  files.push({ name: "ticker.txt", content: (S.ticker.text || "") + "\n" });
+  if (S.notify.text) { files.push({ name: "notify.txt", content: S.notify.text + "\n" }); }
+  var mlist = [];
+  S.pages.forEach(function (pg) { pg.zones.forEach(function (z) {
+    if (z.type === "文件" && z.slideFiles.length) {
+      mlist.push("content/" + z.name + "/ 目录放:\n  " + z.slideFiles.join("\n  ") + "\n");
+    }
+  }); });
+  files.push({ name: "素材清单.txt", content: mlist.length ? mlist.join("\n") : "（本次未导入本机素材）\n" });
+  files.push({ name: "使用说明.txt", content:
+    "把 zip 里的文件按原样拷到 mediaboard 安装目录覆盖同名文件（content/ 分区目录会新增）。\n" +
+    "然后 bash stop.sh && bash start.sh 生效。\n" +
+    "打开 file:///<安装路径>/mediaboard/player.html?selftest=1 可跑自检。\n" +
+    "打开 file:///<安装路径>/mediaboard/editor.html 重新进入本编辑器（草稿保存在本机）。\n" });
+  return files;
+}
+
+/* ---------- fonts.json（start.sh 生成） ---------- */
+try {
+  var xhr = new XMLHttpRequest();
+  xhr.open("GET", "fonts.json", true);
+  xhr.onload = function () {
+    try { var j = JSON.parse(xhr.responseText); if (j.fonts && j.fonts.length) { fonts = fonts.concat(j.fonts); } } catch (e) {}
+  };
+  xhr.send();
+} catch (e) {}
+
+/* ---------- 启动 ---------- */
+(function boot() {
+  try {
+    var draft = localStorage.getItem("mbEditorDraft");
+    if (draft) { S = JSON.parse(draft); toast("已恢复上次草稿"); }
+  } catch (e) {}
+  syncTopForm();
+  ["text", "effect", "speed", "size", "height", "color", "bgcolor", "bold", "mask", "sep"].forEach(function (k) {
+    var el = $("tk_" + k); if (el && S.ticker[k] != null) { el.value = S.ticker[k]; }
+  });
+  $("nf_text").value = S.notify.text || "";
+  renderStruct();
+  renderZoneProps();
+  $("preview").addEventListener("load", function () { pushPreview(); });
+  pushPreview();
+  window.addEventListener("message", function (ev) {
+    if (ev.data && ev.data.mbState) { $("ready").textContent = ev.data.mbState; }
+  });
+  window.mbEditorReady = true;
+})();
+</script>
+</body>
+</html>

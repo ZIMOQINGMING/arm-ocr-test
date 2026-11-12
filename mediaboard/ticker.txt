@@ -1,1 +1,1 @@
-欢迎使用 MediaBoard 多媒体看板　●　　编辑 ticker.txt 即可修改这段滚动字幕
+麒麟看板 v3 · 修改 ticker.txt 即可滚动显示

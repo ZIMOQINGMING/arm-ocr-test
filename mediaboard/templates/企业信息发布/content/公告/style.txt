@@ -1,0 +1,9 @@
+TITLE=今日安排
+COLOR=#e8f1ff
+GRADIENT=#0b1e3d,#15325c
+SIZE=3
+ICON=clock
+CARD=yes
+RADIUS=1
+SHADOW=yes
+PADDING=1.2

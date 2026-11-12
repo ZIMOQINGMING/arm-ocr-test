@@ -1,0 +1,5 @@
+SIZE=2.2
+COLOR=#bcd4f5
+BGCOLOR=#071528
+EFFECT=static
+ALIGN=center

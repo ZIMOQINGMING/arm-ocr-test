@@ -1,0 +1,6 @@
+FORMAT=datetime
+COLOR=#ffffff
+GRADIENT=#0b1e3d,#1a3a6b
+CARD=yes
+RADIUS=1
+SIZE=2.6

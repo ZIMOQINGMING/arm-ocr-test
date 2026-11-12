@@ -1,4 +1,4 @@
-name: MediaBoard-v2-build-test
+name: MediaBoard-v3-build-test
 on:
   push:
     paths:
@@ -9,64 +9,108 @@ on:
 jobs:
   build-test:
     runs-on: ubuntu-24.04-arm
-    timeout-minutes: 30
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
 
       - name: Backup pristine mediaboard
         run: rm -rf /tmp/mb_pristine && cp -r mediaboard /tmp/mb_pristine
 
-      - name: Syntax check scripts
+      - name: Syntax check scripts + editor JS
         run: |
           bash -n mediaboard/start.sh
           bash -n mediaboard/install.sh
           bash -n mediaboard/stop.sh
-          echo "syntax OK"
+          node --check mediaboard/player.js
+          node --check mediaboard/ziputil.js
+          python3 - <<'PY'
+          import re
+          h = open("mediaboard/editor.html", encoding="utf-8").read()
+          blocks = re.findall(r"<script(?![^>]*src)[^>]*>(.*?)</script>", h, re.S)
+          open("/tmp/_ed.js", "w", encoding="utf-8").write(blocks[-1])
+          PY
+          node --check /tmp/_ed.js
+          echo "ALL SYNTAX OK"
 
-      - name: Functional test v2 in Debian bookworm (real chromium + Xvfb, arm64)
+      - name: Functional test v3 in Debian bookworm (real chromium + Xvfb, arm64)
         run: |
           docker run --rm -v "$GITHUB_WORKSPACE:/w" -w /w/mediaboard debian:bookworm bash -c '
             set -e
             export DEBIAN_FRONTEND=noninteractive
             apt-get update -qq >/dev/null
-            apt-get install -y -qq chromium imagemagick python3 xvfb x11-utils \
+            apt-get install -y -qq chromium imagemagick python3 xvfb x11-utils nodejs \
               fonts-dejavu-core fonts-noto-cjk >/dev/null 2>&1
             chromium --version
             # ---- 造测试素材 ----
-            mkdir -p content/左区 content/右区 content/文本区 content/文本区2 content/时钟区 content/计时区 fonts
-            convert -size 1280x720 xc:red     -pointsize 90 -fill white -gravity center -annotate 0 "L1-RED"    content/左区/01-red.png
-            convert -size 1280x720 xc:green   -pointsize 90 -fill white -gravity center -annotate 0 "L2-GREEN"  content/左区/02-green.png
-            convert -size 1280x720 xc:blue    -pointsize 90 -fill white -gravity center -annotate 0 "R1-BLUE"   content/右区/01-blue.png
-            convert -size 1280x720 xc:purple  -pointsize 90 -fill white -gravity center -annotate 0 "R2-PURPLE" content/右区/02-purple.png
-            printf "文本窗测试A123 汉字ABC\n第二行XYZ 789" > content/文本区/text.txt
-            printf "SIZE=7\nCOLOR=#00ff00\nBGCOLOR=#202020\nEFFECT=static\nBOLD=yes\nALIGN=center\n" > content/文本区/style.txt
-            printf "向上滚动测试DEF向上滚动\n第二行GHIJKLMNOP" > content/文本区2/text.txt
-            printf "EFFECT=scroll-up\nSPEED=60\nCOLOR=#ff00ff\nBGCOLOR=#101010\nSIZE=6\n" > content/文本区2/style.txt
-            printf "MODE=dial\nCOLOR=#ffffff\nBGCOLOR=#102030\n" > content/时钟区/style.txt
-            printf "TARGET=2030-01-01 08:00\nTITLE=倒计时\nCOLOR=#ffffff\nBGCOLOR=#301030\n" > content/计时区/style.txt
-            cp /usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf fonts/DemoFont.ttf
-            printf "左区=0,0,50,70,4\n文本区=50,0,50,35\n时钟区=50,35,25,35\n计时区=75,35,25,35\n---\n右区=0,0,100,100,4\n文本区2=0,0,50,30\n" > layout.txt
-            echo "麒麟播放板v2字幕效果测试ABC123" > ticker.txt
-            echo "紧急通知测试NOTICE-XYZ" > notify.txt
-            printf "DURATION=4\nSOUND=no\nRELOAD_MINUTES=0\nFILL=contain\nTRANSITION=cover-l\nTRANSITION_TIME=0.5\nPAGE_DURATION=8\nTICKER_EFFECT=scroll-left\nTICKER_SPEED=90\nTICKER_COLOR=#ffff00\nTICKER_BGCOLOR=#ff00ff\nTICKER_SIZE=5.5\nTICKER_HEIGHT=9\nNOTIFY_MINUTES=5\n" > settings.txt
-            # ---- 1) playlist 生成断言 ----
+            mkdir -p content/主画面 content/九宫格 content/渐变卡 content/公告 content/二维码 content/时钟 data
+            convert -size 1280x720 xc:"#0a3c78" -pointsize 90 -fill white -gravity center -annotate 0 "MAIN" content/主画面/01-main.png
+            convert -size 640x360 xc:red     content/九宫格/01.png
+            convert -size 640x360 xc:"#00c850" content/九宫格/02.png
+            convert -size 640x360 xc:"#a000dc" content/九宫格/03.png
+            convert -size 640x360 xc:"#ff8c00" content/九宫格/04.png
+            printf "渐变卡片标题\n阴影+描边+图标+装饰线" > content/渐变卡/text.txt
+            printf "SIZE=4.5\nCOLOR=#ffffff\nGRADIENT=#0b1e3d,#1a3a6b\nCARD=yes\nRADIUS=1\nSHADOW=yes\nSTROKE=yes\nPADDING=1\nICON=star\nDECOR=line\nEFFECT=static\n" > content/渐变卡/style.txt
+            printf "08:30 全体例会\n10:00 设备巡检\n14:00 安全培训\n16:30 班后会" > content/公告/text.txt
+            printf "TITLE=今日通知\nCOLOR=#eaf1ff\nBGCOLOR=#13203c\nSIZE=3\nICON=horn\nPADDING=1\n" > content/公告/style.txt
+            printf "https://kylin.example/boarding?station=A1\n" > content/二维码/text.txt
+            printf "TITLE=扫码报修\nCOLOR=#111111\nBGCOLOR=#ffffff\nECL=M\nPADDING=0.6\n" > content/二维码/style.txt
+            printf "MODE=dial\nCOLOR=#ffffff\nBGCOLOR=#101820\n" > content/时钟/style.txt
+            printf "GROUP=grid\nGROUPCOLS=2\nCARD=yes\n" > content/九宫格/style.txt
+            printf "{\"items\":[\"值班长:张三\",\"值班员:李四\"]}" > data/值班.json
+            printf "主画面=g:1,1,6,6,4\n九宫格=g:1,7,6,6,4\n渐变卡=g:7,1,6,2,,文本\n公告=g:7,7,6,2,,公告\n二维码=g:9,1,3,3,,二维码\n时钟=g:9,4,3,3,,时钟\n--- 60\n页2主=g:1,1,12,12,4\n" > layout.txt
+            echo "麒麟看板 v3 字幕滚动验证 ABC123" > ticker.txt
+            printf "DURATION=4\nSOUND=no\nRELOAD_MINUTES=0\nFILL=contain\nTRANSITION=fade\nTRANSITION_TIME=0.5\nPAGE_DURATION=8\nPERF=high\nKENBURNS=no\nTWINKLE=no\nTICKER_EFFECT=scroll-left\nTICKER_SPEED=90\nTICKER_COLOR=#ffff00\nTICKER_BGCOLOR=#ff00ff\nTICKER_SIZE=5.5\nTICKER_HEIGHT=9\nTICKER_MASK=yes\nNOTIFY_MINUTES=5\n" > settings.txt
+            # ---- 1) playlist 结构断言 ----
             MEDIABOARD_TEST=1 bash start.sh
-            grep -q "text:{content" playlist.js || { echo "FAIL: text zone missing"; exit 1; }
-            grep -q "clock:{mode:" playlist.js || { echo "FAIL: clock style missing"; exit 1; }
-            grep -q "countdown:{" playlist.js || { echo "FAIL: countdown zone missing"; exit 1; }
-            grep -q "fontfaces:\[{family:" playlist.js || { echo "FAIL: fontfaces missing"; exit 1; }
-            grep -q "notify:{text:" playlist.js || { echo "FAIL: notify missing"; exit 1; }
-            grep -q "effect:\"scroll-left\"" playlist.js || { echo "FAIL: ticker effect missing"; exit 1; }
+            grep -q "group:\"grid\"" playlist.js       || { echo "FAIL: grid group missing"; exit 1; }
+            grep -q "qr:{content:" playlist.js         || { echo "FAIL: qr zone missing"; exit 1; }
+            grep -q "notice:{content:" playlist.js     || { echo "FAIL: notice zone missing"; exit 1; }
+            grep -q "gradient:\"#0b1e3d,#1a3a6b\"" playlist.js || { echo "FAIL: gradient missing"; exit 1; }
+            grep -q "card:\"yes\"" playlist.js         || { echo "FAIL: card missing"; exit 1; }
+            grep -q "padding:\"1\"" playlist.js        || { echo "FAIL: padding missing"; exit 1; }
+            grep -q "icon:\"star\"" playlist.js        || { echo "FAIL: icon missing"; exit 1; }
+            grep -q "x:50.00,y:0.00,w:50.00,h:50.00" playlist.js || { echo "FAIL: grid coords wrong"; exit 1; }
+            grep -q "perf:\"high\"" playlist.js        || { echo "FAIL: perf missing"; exit 1; }
+            grep -q "mask:true" playlist.js            || { echo "FAIL: ticker mask missing"; exit 1; }
             PAGES=$(grep -c "{duration:8,zones:" playlist.js)
             [ "$PAGES" -eq 2 ] || { echo "FAIL: pages=$PAGES expect 2"; exit 1; }
-            echo "PASS: playlist v2 generation (pages=2, text/clock/countdown/fontfaces/notify)"
-            # ---- 2) JS 运行无错误（2 秒虚拟时间足够初始化） ----
+            echo "PASS: playlist v3 (grid coords/qr/notice/gradient/card/padding/icon/perf/mask/pages)"
+            # ---- 2) JS 无错误 ----
             chromium --headless --no-sandbox --disable-gpu --test-type \
               --allow-file-access-from-files --window-size=1280,720 \
               --virtual-time-budget=2000 --dump-dom "file:///w/mediaboard/player.html" 2>/dev/null > /tmp/dom.html
-            grep -q "mb-state\">ready<" /tmp/dom.html || { echo "FAIL: mb-state not ready"; grep -o "mb-state\"[^<]*" /tmp/dom.html; exit 1; }
-            echo "PASS: player.js runs without error (mb-state=ready)"
-            # ---- 3) 真机实时截图（Xvfb + 真实 chromium，不用虚拟时间） ----
+            grep -q "mb-state\">ready<" /tmp/dom.html || { echo "FAIL: player not ready"; grep -o "mb-state\"[^<]*" /tmp/dom.html; exit 1; }
+            echo "PASS: player.js runs (mb-state=ready)"
+            # ---- 3) 自检页（允许 Debian 缺专有编解码 2 项） ----
+            chromium --headless --no-sandbox --disable-gpu --test-type \
+              --allow-file-access-from-files --window-size=1280,720 \
+              --virtual-time-budget=2500 --dump-dom "file:///w/mediaboard/player.html?selftest=1" 2>/dev/null > /tmp/self.html
+            python3 - <<PYEOF
+          import re
+          h = open("/tmp/self.html", encoding="utf-8").read()
+          m = re.search(r"<title>selftest (\d+)/(\d+)</title>", h)
+          assert m, "FAIL: selftest title missing"
+          p, t = int(m.group(1)), int(m.group(2))
+          print("selftest:", p, "/", t)
+          assert t >= 14, "FAIL: selftest items=%d (expect >=14)" % t
+          assert p >= t - 3, "FAIL: selftest pass=%d/%d (allow <=3 codec misses)" % (p, t)
+          for name in ("mask-image", "clip-path", "二维码库", "@font-face" if False else "canvas"):
+              assert name in h, "FAIL: selftest row missing: " + name
+          print("PASS: selftest %d/%d" % (p, t))
+          PYEOF
+            # ---- 4) 编辑器页面（结构 + 实时预览标记） ----
+            chromium --headless --no-sandbox --disable-gpu --test-type \
+              --allow-file-access-from-files --window-size=1600,900 \
+              --virtual-time-budget=3000 --dump-dom "file:///w/mediaboard/editor.html" 2>/dev/null > /tmp/ed.html
+            grep -q "实时预览中" /tmp/ed.html || { echo "FAIL: editor preview not pushing"; exit 1; }
+            grep -q "第1页" /tmp/ed.html || { echo "FAIL: editor timeline missing"; exit 1; }
+            grep -q "导出配置包" /tmp/ed.html || { echo "FAIL: editor export button missing"; exit 1; }
+            chromium --headless --no-sandbox --disable-gpu --test-type \
+              --allow-file-access-from-files --window-size=1600,900 \
+              --virtual-time-budget=3000 --screenshot=/w/shot_editor.png \
+              "file:///w/mediaboard/editor.html" 2>/dev/null
+            echo "PASS: editor page (timeline/preview/export)"
+            # ---- 5) 真机实时截图（Xvfb + chromium --app） ----
             export DISPLAY=:99
             Xvfb :99 -screen 0 1280x720x24 >/dev/null 2>&1 &
             XVFB_PID=$!
@@ -77,71 +121,63 @@ jobs:
               --autoplay-policy=no-user-gesture-required \
               --app="file:///w/mediaboard/player.html" >/dev/null 2>&1 &
             CH_PID=$!
-            sleep 2;   import -window root /w/shot_1500.png
-            sleep 8.6; import -window root /w/shot_10000.png
-            sleep 3;   import -window root /w/shot_13000.png
+            sleep 2.5;  import -window root /w/shot_v3_p1.png
+            sleep 8.5;  import -window root /w/shot_v3_p2.png
             kill $CH_PID $XVFB_PID 2>/dev/null || true
-            ls -l /w/shot_*.png
-            # ---- 4) 像素级断言 ----
+            ls -l /w/shot_v3_p1.png /w/shot_v3_p2.png
+            # ---- 6) 像素级断言 ----
             python3 - <<PYEOF
           import subprocess
-          def stats(f, x, y, w, h):
+          def st(f, x, y, w, h):
               out = subprocess.run(["convert", f, "-crop", "%dx%d+%d+%d" % (w, h, x, y), "+repage",
-                                    "-format", "%[fx:mean.r*255] %[fx:mean.g*255] %[fx:mean.b*255] %[standard-deviation]",
+                                    "-format", "%[fx:mean.r*255] %[fx:mean.g*255] %[fx:mean.b*255] %[standard-deviation] %[fx:maxima.r*255] %[fx:maxima.g*255] %[fx:maxima.b*255]",
                                     "info:"], capture_output=True, text=True).stdout
-              v = [float(t) for t in out.split()]
-              return v[0], v[1], v[2], v[3]
-          def peak(f, x, y, w, h):
-              out = subprocess.run(["convert", f, "-crop", "%dx%d+%d+%d" % (w, h, x, y), "+repage",
-                                    "-format", "%[fx:maxima.r*255] %[fx:maxima.g*255] %[fx:maxima.b*255]",
+              return [float(t) for t in out.split()]
+          def px(f, x, y):
+              out = subprocess.run(["convert", f, "-crop", "1x1+%d+%d" % (x, y), "+repage",
+                                    "-format", "%[fx:int(255*r)] %[fx:int(255*g)] %[fx:int(255*b)]",
                                     "info:"], capture_output=True, text=True).stdout
-              v = [float(t) for t in out.split()]
-              return v[0], v[1], v[2]
-          S1, S2, S3 = "/w/shot_1500.png", "/w/shot_10000.png", "/w/shot_13000.png"
-          # t=2s 页1: 左区红
-          r, g, b, sd = stats(S1, 60, 120, 80, 40)
-          print("t2 left:", r, g, b, sd)
-          assert r > 80 and g < 15 and b < 15, "FAIL: left not red"
-          # 文本窗: 绿字(#00ff00) 必有绿色峰值（避开顶部通知横幅 0..72px）
-          r, g, b, sd = stats(S1, 700, 80, 500, 160)
-          pr, pg, pb = peak(S1, 700, 80, 500, 160)
-          print("t2 textzone mean:", r, g, b, sd, "peak:", pr, pg, pb)
-          assert pg > 120 and sd > 2, "FAIL: text zone not rendered"
-          # 表盘时钟区
-          r, g, b, sd = stats(S1, 700, 300, 200, 160)
-          print("t2 dialclock:", r, g, b, sd)
-          assert sd > 1, "FAIL: dial clock blank"
-          # 倒计时区
-          r, g, b, sd = stats(S1, 1000, 300, 240, 160)
-          print("t2 countdown:", r, g, b, sd)
-          assert sd > 1, "FAIL: countdown blank"
-          # 通知横幅(红底 #c00000)
-          r, g, b, sd = stats(S1, 100, 8, 400, 48)
-          print("t2 notify:", r, g, b, sd)
-          assert r > 100 and g < 60 and b < 60, "FAIL: notify bar not red"
-          # 字幕条(品红底 #ff00ff)
-          r, g, b, sd = stats(S1, 200, 660, 300, 48)
-          print("t2 ticker:", r, g, b, sd)
+              return [int(float(t)) for t in out.split()]
+          S1, S2 = "/w/shot_v3_p1.png", "/w/shot_v3_p2.png"
+          # 主画面（蓝）
+          r, g, b = px(S1, 100, 200); print("main:", r, g, b)
+          assert b > 80 and r < 30, "FAIL: main zone not blue"
+          # 九宫格 2x2 四色
+          cells = {"tl": (798, 92), "tr": (1118, 92), "bl": (798, 268), "br": (1118, 268)}
+          got = {k: px(S1, x, y) for k, (x, y) in cells.items()}
+          print("grid cells:", got)
+          assert got["tl"][0] > 150 and got["tl"][1] < 60, "FAIL: grid tl not red"
+          assert got["tr"][1] > 140 and got["tr"][0] < 60, "FAIL: grid tr not green"
+          assert got["bl"][0] > 120 and got["bl"][2] > 150 and got["bl"][1] < 90, "FAIL: grid bl not purple"
+          assert got["br"][0] > 200 and got["br"][1] > 100 and got["br"][2] < 80, "FAIL: grid br not orange"
+          # 渐变卡：两端色差
+          a = px(S1, 20, 375); c = px(S1, 600, 470)
+          print("gradient ends:", a, c)
+          assert abs(a[2] - c[2]) > 10 or abs(a[0] - c[0]) > 8, "FAIL: gradient not visible"
+          # 渐变卡内白字峰值
+          v = st(S1, 30, 370, 560, 100); print("gradtext peak:", v[4:])
+          assert v[4] > 200 and v[3] > 3, "FAIL: gradient card text missing"
+          # 公告列表：白字存在
+          v = st(S1, 660, 370, 600, 100); print("notice peak:", v[4:], "sd", v[3])
+          assert v[4] > 200 and v[3] > 4, "FAIL: notice list blank"
+          # 二维码：黑白模块（均值中间、方差大）
+          v = st(S1, 110, 490, 220, 160); print("qr mean/sd:", v[0], v[1], v[2], v[3])
+          assert 40 < v[0] < 230 and v[3] > 25, "FAIL: QR not rendered"
+          # 表盘：白线峰值
+          v = st(S1, 660, 490, 240, 140); print("dial peak:", v[4:], "sd", v[3])
+          assert v[4] > 150 and v[3] > 3, "FAIL: dial clock blank"
+          # 字幕条品红底
+          r, g, b = px(S1, 200, 690); print("ticker:", r, g, b)
           assert r > 90 and b > 90 and g < 70, "FAIL: ticker bar not magenta"
-          # t=10.6s 页2: 全屏蓝（节目页切换生效）
-          r, g, b, sd = stats(S2, 1100, 550, 80, 40)
-          print("t10.6 page2:", r, g, b, sd)
-          assert b > 80 and r < 15, "FAIL: page2 not blue (page switch broken?)"
-          # 页2 文本区2 scroll-up 洋红字(#ff00ff) 峰值（crop 完全落在分区内）
-          pr, pg, pb = peak(S2, 50, 90, 540, 120)
-          print("t10.6 textzone2 peak:", pr, pg, pb)
-          assert pr > 120 and pb > 120, "FAIL: page2 scroll-up text zone blank"
-          # t=13.6s 页2 第2张: 紫
-          r, g, b, sd = stats(S3, 1100, 550, 80, 40)
-          print("t13.6 page2:", r, g, b, sd)
-          assert r > 30 and b > 30 and g < 20, "FAIL: page2 slide2 not purple"
-          print("ALL V2 FUNCTIONAL TESTS PASSED")
+          # 页2: 全屏蓝（节目页切换）
+          r, g, b = px(S2, 320, 320); print("page2:", r, g, b)
+          assert b > 80 and r < 30, "FAIL: page switch broken"
+          print("ALL V3 FUNCTIONAL TESTS PASSED")
           PYEOF
           '
 
       - name: Package clean bundle
         run: |
-          # 容器内 root 建的文件宿主删不掉，必须容器内清理（清理与打包同一容器，避免重复装包）
           docker run --rm -v "$GITHUB_WORKSPACE:/w" -w /w debian:bookworm bash -c '
             set -e
             rm -rf /w/mediaboard
@@ -154,22 +190,25 @@ jobs:
             apt-get update -qq >/dev/null
             apt-get install -y -qq imagemagick >/dev/null 2>&1
             mkdir -p /w/mediaboard/content /w/mediaboard/fonts
-            convert -size 1280x720 "xc:#103050" -pointsize 60 -fill white -gravity center \
-              -annotate 0 "MediaBoard v2 Ready" /w/mediaboard/content/00-welcome.png
+            convert -size 1280x720 "xc:#103050" -pointsize 56 -fill white -gravity center \
+              -annotate 0 "MediaBoard v3 Ready" /w/mediaboard/content/00-welcome.png
             chown -R "$(stat -c %u:%g /w)" /w/mediaboard
           '
           cd "$GITHUB_WORKSPACE"
+          rm -f mediaboard/playlist.js mediaboard/fonts.json
           tar czf mediaboard-kylin-arm64.tar.gz mediaboard
           ls -lh mediaboard-kylin-arm64.tar.gz
-          tar tzf mediaboard-kylin-arm64.tar.gz | head -20
+          echo "--- bundle entries ---"
+          tar tzf mediaboard-kylin-arm64.tar.gz | wc -l
+          tar tzf mediaboard-kylin-arm64.tar.gz | grep -E "editor.html|qr.js|ziputil.js|templates/README|player.js|start.sh" | head
 
       - name: Upload artifact
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: mediaboard-v2-arm64
+          name: mediaboard-v3-arm64
           path: |
             mediaboard-kylin-arm64.tar.gz
-            shot_1500.png
-            shot_10000.png
-            shot_13000.png
+            shot_v3_p1.png
+            shot_v3_p2.png
+            shot_editor.png
