@@ -61,6 +61,9 @@ jobs:
                                     "+repage", "-resize", "1x1", "txt:-"],
                                    capture_output=True, text=True).stdout
               m = re.search(r"srgb\(([^)]+)\)", out)
+              if not m:
+                  print("RAW OUTPUT for", f, x, y, w, h, "->", repr(out))
+                  raise SystemExit(1)
               vals = []
               for comp in m.group(1).split(","):
                   comp = comp.strip()
