@@ -1,6 +1,12 @@
+# 图片/视频默认停留秒数（layout.txt 里每个分区可单独覆盖）
 DURATION=10
-SOUND=yes
+# 视频是否出声（yes/no）
+SOUND=no
+# 定时整页刷新分钟数（0=不刷新；建议 30 防长时间运行内存累积）
 RELOAD_MINUTES=30
+# 字幕滚动速度，单位约等于 px/秒（数字越大越快）
 TICKER_SPEED=60
 TICKER_COLOR=#ffff00
-TICKER_BGCOLOR=rgba(0,0,0,0.72)
+TICKER_BGCOLOR=#1a3a6b
+# 画面填充方式: contain=完整显示留黑边（不裁切） / cover=铺满裁切
+FILL=contain
