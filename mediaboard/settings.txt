@@ -1,12 +1,59 @@
+# ================= 基础 =================
 # 图片/视频默认停留秒数（layout.txt 里每个分区可单独覆盖）
 DURATION=10
 # 视频是否出声（yes/no）
 SOUND=no
 # 定时整页刷新分钟数（0=不刷新；建议 30 防长时间运行内存累积）
 RELOAD_MINUTES=30
-# 字幕滚动速度，单位约等于 px/秒（数字越大越快）
-TICKER_SPEED=60
-TICKER_COLOR=#ffff00
-TICKER_BGCOLOR=#1a3a6b
 # 画面填充方式: contain=完整显示留黑边（不裁切） / cover=铺满裁切
 FILL=contain
+
+# ================= 切换特效 =================
+# 素材切换特效: fade淡入淡出 / random随机 / cover-l左覆盖 / cover-r右覆盖 /
+#   cover-u上覆盖 / cover-d下覆盖 / wipe-l右擦 / wipe-r左擦 / wipe-u下擦 /
+#   wipe-d上擦 / wipe-lu左上斜擦 / wipe-ru右上斜擦 / none无
+TRANSITION=fade
+# 特效时长（秒），越小越快
+TRANSITION_TIME=0.8
+# 图片停留期间是否闪烁（yes/no）
+TWINKLE=no
+
+# ================= 节目页 =================
+# 每个节目页的默认停留秒数（layout.txt 里 --- 行可单独覆盖）
+PAGE_DURATION=60
+
+# ================= 背景 / 音乐 =================
+# 全屏背景图（相对 mediaboard 的路径，如 bg/背景.jpg，留空=纯黑）
+BGIMAGE=
+# 全屏背景色（有背景图时作为兜底色）
+BGCOLOR=
+# 背景音乐（mp3 等，循环播放，留空=无）
+BGMUSIC=
+# 背景音乐音量 0~1
+BGMUSIC_VOL=0.6
+
+# ================= 底部滚动字幕 =================
+# 字幕效果: scroll-left左移走马灯(默认) / scroll-up向上滚动(多行) /
+#   blink闪烁 / static静止 / typewriter打字机
+TICKER_EFFECT=scroll-left
+# 滚动速度: 像素/秒（typewriter 时=每秒字数，默认6）
+TICKER_SPEED=90
+# 字体（留空=系统默认；可填 fonts/ 目录里的字体名，见 README）
+TICKER_FONT=
+# 字号（vh，占屏幕高度的百分比数字）
+TICKER_SIZE=5.5
+TICKER_COLOR=#ffff00
+TICKER_BGCOLOR=#1a3a6b
+TICKER_BOLD=yes
+# 字幕条高度（vh）
+TICKER_HEIGHT=9
+# 循环分隔符（scroll-left 时每段文字之间的间隔）
+TICKER_SEP=　　●　　
+
+# ================= 定时关屏（防烧屏） =================
+# 每天黑屏时段，格式 时:分-时:分（支持跨零点，如 22:30-07:30；留空=不关屏）
+SCREEN_OFF=
+
+# ================= 通知插播 =================
+# notify.txt 有内容时，顶部红色横幅插播的分钟数
+NOTIFY_MINUTES=5
