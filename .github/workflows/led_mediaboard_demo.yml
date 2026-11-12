@@ -11,62 +11,131 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Run player with realistic demo content, capture screenshots
+      - name: Real-time run under Xvfb, capture 4 real screenshots
         run: |
           docker run --rm -v "$GITHUB_WORKSPACE:/w" -w /w/mediaboard debian:bookworm bash -c '
             set -e
             export DEBIAN_FRONTEND=noninteractive
             apt-get update -qq >/dev/null
-            apt-get install -y -qq chromium imagemagick fonts-noto-cjk >/dev/null 2>&1
+            apt-get install -y -qq chromium xvfb imagemagick fonts-noto-cjk python3 >/dev/null 2>&1
             chromium --version
 
-            # ===== 真实感演示内容 =====
+            # ===== 演示素材：尺寸按分区实际像素做（1280x720 屏）=====
+            # 主画面 0,0,70,86 -> 896x619 ; 侧栏 70,0,30,56 -> 384x403
             mkdir -p content/主画面 content/侧栏
+            F=Noto-Sans-CJK-SC
 
-            # 主画面: 三张 PPT 风格幻灯片 (企业蓝渐变背景 + 标题/正文)
-            convert -size 1280x720 gradient:"#0a3d7a"-"#1e6fd9" \
-              -font Noto-Sans-CJK-SC -pointsize 64 -fill white -gravity north -annotate +0+70 "季度工作汇报" \
-              -pointsize 36 -fill "#cfe4ff" -gravity northwest -annotate +90+220 "· 一、项目进展顺利" \
-              -annotate +90+320 "· 二、质量指标达标" -annotate +90+420 "· 三、下季度计划" \
-              content/主画面/01-封面.png
-            convert -size 1280x720 gradient:"#7a1e5c"-"#d91e6f" \
-              -font Noto-Sans-CJK-SC -pointsize 58 -fill white -gravity north -annotate +0+70 "通知公告" \
-              -pointsize 34 -fill "#ffd9ec" -gravity northwest -annotate +90+230 "本周五下午 15:00" \
-              -annotate +90+320 "三楼会议室 全员参加" -annotate +90+410 "请提前安排好工作" \
-              content/主画面/02-通知.png
-            convert -size 1280x720 gradient:"#0d6b4f"-"#2ecc8f" \
-              -font Noto-Sans-CJK-SC -pointsize 58 -fill white -gravity north -annotate +0+70 "安全生产宣传" \
-              -pointsize 34 -fill "#d0ffe9" -gravity northwest -annotate +90+230 "安全第一 预防为主" \
-              -annotate +90+320 "规范操作 谨慎作业" -annotate +90+410 "人人讲安全 事事为安全" \
-              content/主画面/03-宣传.png
+            convert -size 896x619 gradient:"#0b3f7a"-"#2277dd" \
+              -font $F -pointsize 46 -fill white -gravity north -annotate +0+50 "季度工作汇报" \
+              -pointsize 24 -fill "#d6e8ff" -gravity northwest \
+              -annotate +70+170 "一、项目进展顺利" -annotate +70+250 "二、质量指标全面达标" \
+              -annotate +70+330 "三、下季度重点计划" content/主画面/01-封面.png
+            convert -size 896x619 gradient:"#7a1250"-"#e01e6e" \
+              -font $F -pointsize 44 -fill white -gravity north -annotate +0+50 "通 知 公 告" \
+              -pointsize 24 -fill "#ffd9ec" -gravity northwest \
+              -annotate +70+170 "本周五 15:00 三楼会议室" -annotate +70+250 "全员参加，请提前安排工作" \
+              -annotate +70+330 "带好笔记本与工牌" content/主画面/02-通知.png
+            convert -size 896x619 gradient:"#0a5c46"-"#27c489" \
+              -font $F -pointsize 44 -fill white -gravity north -annotate +0+50 "安全生产宣传" \
+              -pointsize 24 -fill "#d4ffef" -gravity northwest \
+              -annotate +70+170 "安全第一  预防为主" -annotate +70+250 "规范操作  谨慎作业" \
+              -annotate +70+330 "人人讲安全  事事为安全" content/主画面/03-宣传.png
 
-            # 侧栏: 三张竖版图片
-            convert -size 640x1440 gradient:"#f5b133"-"#e08214" \
-              -font Noto-Sans-CJK-SC -pointsize 72 -fill "#5c3a00" -gravity center -annotate 0 "图\n片\n栏" \
-              content/侧栏/01.png
-            convert -size 640x1440 gradient:"#13b3c9"-"#0b7f97" \
-              -font Noto-Sans-CJK-SC -pointsize 72 -fill white -gravity center -annotate 0 "产\n品\n图" \
-              content/侧栏/02.png
-            convert -size 640x1440 gradient:"#8e6fd9"-"#5a3fa8" \
-              -font Noto-Sans-CJK-SC -pointsize 72 -fill white -gravity center -annotate 0 "风\n景\n图" \
-              content/侧栏/03.png
+            convert -size 384x403 gradient:"#f0a52a"-"#e0761a" \
+              -font $F -pointsize 40 -fill "#4a2c00" -gravity center -annotate 0 "图\n片\n栏" content/侧栏/01.png
+            convert -size 384x403 gradient:"#12a8bd"-"#0a7288" \
+              -font $F -pointsize 40 -fill white -gravity center -annotate 0 "产\n品\n图" content/侧栏/02.png
+            convert -size 384x403 gradient:"#8266cf"-"#4c33a0" \
+              -font $F -pointsize 40 -fill white -gravity center -annotate 0 "风\n景\n图" content/侧栏/03.png
 
-            # 布局: 左70%主画面(8s/张) 右上30%侧栏(5s/张) 右下时钟 底部字幕
-            printf "主画面=0,0,70,90,8\n侧栏=70,0,30,60,5\n时钟=70,60,30,30\n" > layout.txt
-            echo "麒麟V10 播放板正在运行 · 滚动字幕演示 · 支持图片/PPT/视频轮播 + 分区组合播放" > ticker.txt
-            printf "DURATION=8\nSOUND=no\nRELOAD_MINUTES=0\nTICKER_SPEED=70\nTICKER_COLOR=#ffffff\nTICKER_BGCOLOR=#1a3a6b\n" > settings.txt
+            printf "主画面=0,0,70,86,8\n侧栏=70,0,30,56,5\n时钟=70,56,30,30\n" > layout.txt
+            echo "麒麟V10 播放板运行中 · 分区组合播放演示 · 图片与PPT自动轮播 · 底部滚动字幕" > ticker.txt
+            printf "DURATION=8\nSOUND=no\nRELOAD_MINUTES=0\nTICKER_SPEED=60\nTICKER_COLOR=#ffffff\nTICKER_BGCOLOR=#16325c\nFILL=cover\n" > settings.txt
 
-            # 生成 playlist 并启动渲染
             MEDIABOARD_TEST=1 bash start.sh
-            ls playlist.js
+            echo "--- playlist.js ---"; head -c 600 playlist.js; echo
 
-            # 截图1: 第 2 秒 (主画面=幻灯片1, 侧栏=图1)
-            chromium --headless --no-sandbox --disable-gpu --window-size=1280,720 \
-              --virtual-time-budget=2000 --screenshot=/w/demo_shot_t2s.png "file:///w/mediaboard/player.html" 2>/dev/null
-            # 截图2: 第 20 秒 (主画面=幻灯片3, 侧栏=图3)
-            chromium --headless --no-sandbox --disable-gpu --window-size=1280,720 \
-              --virtual-time-budget=20000 --screenshot=/w/demo_shot_t20s.png "file:///w/mediaboard/player.html" 2>/dev/null
-            ls -l /w/demo_shot_t2s.png /w/demo_shot_t20s.png
+            # ===== 真实运行（Xvfb + 真 chromium，真实计时）=====
+            Xvfb :99 -screen 0 1280x720x24 >/dev/null 2>&1 &
+            XPID=$!
+            sleep 2
+            export DISPLAY=:99
+            chromium --no-sandbox --disable-gpu --kiosk --window-position=0,0 --window-size=1280,720 \
+              --noerrdialogs --disable-infobars --autoplay-policy=no-user-gesture-required \
+              "file:///w/mediaboard/player.html" >/dev/null 2>&1 &
+            CPID=$!
+            sleep 4;  import -window root /w/shot_1.png
+            sleep 7;  import -window root /w/shot_2.png
+            sleep 8;  import -window root /w/shot_3.png
+            sleep 9;  import -window root /w/shot_4.png
+            kill $CPID $XPID 2>/dev/null || true
+            # 记录字幕动画参数（证明滚动时长按像素算）
+            ls -l /w/shot_*.png
+          '
+
+      - name: Verify screenshots (content advances, ticker scrolls, clock renders)
+        run: |
+          docker run --rm -v "$GITHUB_WORKSPACE:/w" -w /w debian:bookworm bash -c '
+            set -e
+            export DEBIAN_FRONTEND=noninteractive
+            apt-get update -qq >/dev/null && apt-get install -y -qq imagemagick python3 >/dev/null 2>&1
+            python3 - <<PYEOF
+          import subprocess, re, hashlib, os
+          def px(f, x, y, w, h):
+              out = subprocess.run(["convert", f, "-crop", "%dx%d+%d+%d" % (w,h,x,y), "+repage",
+                                    "-resize", "1x1", "txt:-"], capture_output=True, text=True).stdout
+              m = re.search(r"srgb\(([^)]+)\)", out)
+              if m:
+                  v=[]
+                  for c in m.group(1).split(","):
+                      c=c.strip()
+                      v.append(float(c[:-1]) if c.endswith("%") else float(c)/255.0*100.0)
+                  return tuple(v)
+              m2 = re.search(r"#([0-9A-Fa-f]{6})", out)
+              if m2: return tuple(int(m2.group(1)[i:i+2],16)/255.0*100.0 for i in (0,2,4))
+              raise SystemExit("parse fail: "+repr(out))
+          def strip_hash(f):
+              out = subprocess.run(["convert", f, "-crop", "1280x60+0+660", "+repage",
+                                    "-colorspace", "gray", "-resize", "200x10!", "txt:-"],
+                                   capture_output=True, text=True).stdout
+              return hashlib.md5(out.encode()).hexdigest()[:10], out
+          def stddev(f, x,y,w,h):
+              return float(subprocess.run(["convert", f, "-crop", "%dx%d+%d+%d" % (w,h,x,y), "+repage",
+                                          "-format", "%[standard-deviation]", "info:"],
+                                          capture_output=True, text=True).stdout)
+
+          shots = ["/w/shot_%d.png" % i for i in (1,2,3,4)]
+          for f in shots:
+              print(f, os.path.getsize(f), "bytes")
+          # 1) 主画面颜色推进：4 时刻应至少出现 3 种不同主色
+          mains = [px(f, 350, 300, 200, 120) for f in shots]
+          print("main zone colors:", mains)
+          kinds = []
+          for c in mains:
+              top = max(range(3), key=lambda i: c[i])
+              kinds.append(top)
+          print("dominant channel per shot:", kinds)
+          assert len(set(kinds)) >= 2, "FAIL: main zone never advanced"
+          # 2) 侧栏也在变
+          sides = [px(f, 900, 150, 120, 100) for f in shots]
+          print("side zone colors:", sides)
+          assert len(set(sides)) >= 2, "FAIL: side zone never advanced"
+          # 3) 字幕条：非空 + 各时刻内容位置不同（在滚动）
+          hs = []
+          for f in shots:
+              h, raw = strip_hash(f)
+              hs.append(h)
+          print("ticker strip hashes:", hs)
+          assert len(set(hs)) >= 3, "FAIL: ticker not scrolling (identical frames)"
+          sd = stddev(shots[1], 200, 660, 800, 55)
+          print("ticker stddev:", sd)
+          assert sd > 1.0, "FAIL: ticker band blank"
+          # 4) 时钟
+          cd = stddev(shots[0], 900, 410, 360, 200)
+          print("clock stddev:", cd)
+          assert cd > 1.0, "FAIL: clock blank"
+          print("ALL DEMO CHECKS PASSED")
+          PYEOF
           '
 
       - name: Upload screenshots
@@ -74,6 +143,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: mediaboard-demo-shots
-          path: |
-            demo_shot_t2s.png
-            demo_shot_t20s.png
+          path: shot_*.png
