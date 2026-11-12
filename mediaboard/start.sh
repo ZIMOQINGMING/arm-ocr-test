@@ -12,6 +12,7 @@ RELOAD_MINUTES=30
 TICKER_SPEED=60
 TICKER_COLOR="#ffff00"
 TICKER_BGCOLOR="rgba(0,0,0,0.72)"
+FILL="contain"
 if [ -f settings.txt ]; then
   while IFS='=' read -r k v; do
     case "$k" in
@@ -21,10 +22,12 @@ if [ -f settings.txt ]; then
       TICKER_SPEED) TICKER_SPEED="$v";;
       TICKER_COLOR) TICKER_COLOR="$v";;
       TICKER_BGCOLOR) TICKER_BGCOLOR="$v";;
+      FILL) FILL="$v";;
     esac
   done < settings.txt
 fi
 [ "$SOUND" = "yes" ] && SOUND_JS=true || SOUND_JS=false
+case "$FILL" in cover|fill|contain|scale-down) ;; *) FILL="contain";; esac
 
 # ---------- PPT 转图片（有 WPS/LibreOffice 才执行；zone 子目录内的 ppt 也支持） ----------
 convert_ppt() {
@@ -73,6 +76,7 @@ TICKER_TEXT=""
   echo "duration:$DURATION,"
   echo "sound:$SOUND_JS,"
   echo "reloadMinutes:$RELOAD_MINUTES,"
+  echo "fill:\"$FILL\","
   printf 'ticker:{text:"%s",speed:%s,color:"%s",bgcolor:"%s"},\n' \
     "$TICKER_TEXT" "$TICKER_SPEED" "$TICKER_COLOR" "$TICKER_BGCOLOR"
   echo "zones:["
