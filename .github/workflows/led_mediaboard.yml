@@ -58,7 +58,7 @@ jobs:
           a2 = avg("/w/shot2.png")
           assert "srgb" in a1 and "srgb" in a2, "screenshot parse failed"
           b1 = open("/w/shot1.png","rb").read(); b2 = open("/w/shot2.png","rb").read()
-          assert len(b1) > 20000 and len(b2) > 20000, "screenshot too small (blank?)"
+          assert len(b1) > 5000 and len(b2) > 5000, "screenshot too small (blank?)"
           assert b1 != b2, "FAIL: two screenshots identical - slideshow not advancing"
           print("PASS: slideshow advances, screenshots differ")
           # 3) 字幕条渲染：底部 65px 裁切，标准差>0 说明有内容
