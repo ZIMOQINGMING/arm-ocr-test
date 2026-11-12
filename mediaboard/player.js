@@ -51,12 +51,13 @@
       if (!z.slides.length) { return; }
       var src = z.slides[idx];
       var node;
+      var fit = P.fill || "contain";
       if (isVideo(src)) {
         node = document.createElement("video");
         node.src = src;
         node.autoplay = true;
         node.muted = (P.sound === false);
-        node.style.cssText = "width:100%;height:100%;object-fit:contain;background:#000";
+        node.style.cssText = "width:100%;height:100%;object-fit:" + fit + ";background:#000";
         node.onended = next;
         node.onerror = function () { timer = setTimeout(next, 4000); };
         var pr;
@@ -66,7 +67,7 @@
       } else {
         node = document.createElement("img");
         node.src = src;
-        node.style.cssText = "width:100%;height:100%;object-fit:contain;background:#000";
+        node.style.cssText = "width:100%;height:100%;object-fit:" + fit + ";background:#000";
         node.onerror = function () { timer = setTimeout(next, 4000); };
         el.appendChild(node);
         timer = setTimeout(next, (z.duration || P.duration || 10) * 1000);
@@ -96,6 +97,7 @@
   });
 
   // ---- 滚动字幕（底部，全宽） ----
+  // 行程 = 屏幕宽 + 文字块宽；时长 = 行程 / 速度(px/s)，保证「一打开就从右边进场」。
   var tk = P.ticker || {};
   if (tk.text && tk.text.length) {
     var bar = document.getElementById("ticker");
@@ -103,12 +105,21 @@
     bar.style.display = "flex";
     bar.style.color = tk.color || "#ffff00";
     bar.style.background = tk.bgcolor || "rgba(0,0,0,0.72)";
-    bar.style.font = "bold 5.5vh sans-serif";
+    bar.style.font = "bold 5.5vh " + (tk.font || "sans-serif");
     var sep = "　　●　　";
     inner.textContent = tk.text + sep + tk.text + sep;
-    var speed = tk.speed || 60;
-    var secs = Math.max(10, inner.textContent.length * speed / 10);
-    inner.style.animationDuration = secs + "s";
+    var speedPx = Math.max(20, (tk.speed || 60) * 1.5);   // 速度单位: px/秒
+    var vw = inner.parentNode.clientWidth || window.innerWidth;
+    var tw = inner.offsetWidth;
+    var dist = vw + tw;
+    var secs = dist / speedPx;
+    inner.style.animation = "none";
+    void inner.offsetWidth;
+    inner.style.animationDuration = secs.toFixed(1) + "s";
+    inner.style.animationTimingFunction = "linear";
+    inner.style.animationIterationCount = "infinite";
+    inner.style.animationName = "mb-scroll";
+    window.__MB_TICKER = { textWidth: tw, viewWidth: vw, distance: dist, speedPx: speedPx, seconds: secs };
   }
 
   // 定时整页刷新
