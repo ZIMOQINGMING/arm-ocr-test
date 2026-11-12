@@ -49,12 +49,12 @@ jobs:
             convert -size 640x360 xc:"#00c850" content/九宫格/02.png
             convert -size 640x360 xc:"#a000dc" content/九宫格/03.png
             convert -size 640x360 xc:"#ff8c00" content/九宫格/04.png
-            printf "渐变卡片标题\n阴影+描边+图标+装饰线" > content/渐变卡/text.txt
-            printf "SIZE=4.5\nCOLOR=#ffffff\nGRADIENT=#0b1e3d,#1a3a6b\nCARD=yes\nRADIUS=1\nSHADOW=yes\nSTROKE=yes\nPADDING=1\nICON=star\nDECOR=line\nEFFECT=static\n" > content/渐变卡/style.txt
+            printf "渐变卡 阴影+描边+图标\n" > content/渐变卡/text.txt
+            printf "SIZE=3.4\nCOLOR=#ffffff\nGRADIENT=#0b1e3d,#1a3a6b\nCARD=yes\nRADIUS=1\nSHADOW=yes\nSTROKE=yes\nPADDING=1\nICON=star\nDECOR=line\nEFFECT=static\n" > content/渐变卡/style.txt
             printf "08:30 全体例会\n10:00 设备巡检\n14:00 安全培训\n16:30 班后会" > content/公告/text.txt
             printf "TITLE=今日通知\nCOLOR=#eaf1ff\nBGCOLOR=#13203c\nSIZE=3\nICON=horn\nPADDING=1\n" > content/公告/style.txt
             printf "https://kylin.example/boarding?station=A1\n" > content/二维码/text.txt
-            printf "TITLE=扫码报修\nCOLOR=#111111\nBGCOLOR=#ffffff\nECL=M\nPADDING=0.6\n" > content/二维码/style.txt
+            printf "TITLE=扫码\nCOLOR=#111111\nBGCOLOR=#ffffff\nECL=M\nPADDING=0.3\n" > content/二维码/style.txt
             printf "MODE=dial\nCOLOR=#ffffff\nBGCOLOR=#101820\n" > content/时钟/style.txt
             printf "GROUP=grid\nGROUPCOLS=2\nCARD=yes\n" > content/九宫格/style.txt
             printf "{\"items\":[\"值班长:张三\",\"值班员:李四\"]}" > data/值班.json
