@@ -1,0 +1,5 @@
+# 字体显示名映射：文件名=在 style.txt 里写 FONT=?? 的显示名
+# 子集化：思源黑体/宋体 GB2312+ASCII 共 7545 字，合计 6.5MB，可离线双击预览
+SourceHanSansSC-Bold.woff2=思源黑体 粗
+SourceHanSansSC-Regular.woff2=思源黑体 常规
+SourceHanSerifSC-Bold.woff2=思源宋体 粗

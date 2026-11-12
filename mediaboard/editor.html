@@ -137,12 +137,18 @@ button.primary{background:#1d5c33;border-color:#2a8046;font-weight:bold}
 <script src="ziputil.js"></script>
 <script>
 "use strict";
+/* 图标名单：与 player.js ICONS 一一对应（内联 SVG，零字体依赖） */
+var ICON_NAMES = ["", "info", "warn", "star", "clock", "horn", "check", "flag",
+  "arrowR", "arrowL", "arrowUp", "arrowDown", "calendar", "user", "phone", "mail", "pin",
+  "chart", "gear", "sun", "moon", "cloud", "battery", "wifi", "heart", "shield", "fire",
+  "doc", "speaker", "play"];
 /* ---------- 状态模型 ---------- */
 function blankZone(type, n) {
   var z = { name: type + (n || 1), type: type, x: 0, y: 0, w: 30, h: 30, dur: "",
     margin: 0, padding: 0, alignv: "middle", radius: "", card: false, useGrad: false,
     gradA: "#0b1e3d", gradB: "#1a3a6b", shadow: false, stroke: false, tabnum: false,
     icon: "", decor: "", group: "", groupcols: "",
+    layer: "", opacity: "", edgeMask: "", gridFx: "",
     text: "", font: "", size: 6, color: "#ffffff", bgcolor: "#222222", bold: true, italic: false,
     align: "center", effect: "static", speed: 60, linespacing: 1.5,
     clockFmt: "datetime", clockMode: "digital",
@@ -313,8 +319,13 @@ function renderZoneProps() {
     + "<label style='flex:0 0 80px'>白字描边</label><input type='checkbox' id='z_stroke'" + (z.stroke ? " checked" : "") + ">");
   add("渐变底色", "<input type='checkbox' id='z_usegrad'" + (z.useGrad ? " checked" : "") + ">"
     + colorSel("z_gradA", z.gradA) + colorSel("z_gradB", z.gradB) + "<span class='hint'>勾选=135°渐变底</span>");
-  add("图标", sel("z_icon", ["", "info", "warn", "star", "clock", "horn", "check", "flag"], z.icon || "")
+  add("图标", sel("z_icon", ICON_NAMES, z.icon || "")
     + "<label style='flex:0 0 60px'>装饰</label>" + sel("z_decor", ["", "line", "corner"], z.decor || ""));
+  add("图层LAYER", "<input type='number' id='z_layer' min='1' max='99' value='" + (z.layer === "" ? "" : z.layer) + "' placeholder='空=按顺序'>"
+    + "<label style='flex:0 0 46px'>透明%</label><input type='number' id='z_opacity' min='0' max='100' value='" + (z.opacity === "" ? "" : z.opacity) + "' placeholder='100'>"
+    + "<label style='flex:0 0 64px'>边缘渐隐</label><input type='number' id='z_edgemask' min='0' max='30' value='" + (z.edgeMask === "" ? "" : z.edgeMask) + "' placeholder='空=关'>");
+  add("分块特效", sel("z_gridfx", ["", "4", "9", "16"], z.gridFx || "")
+    + "<span class='hint'>静态内容分块错峰入场；视频/多图轮播自动整窗降级</span>");
 
   var T = z.type;
   if (T === "文件") {
@@ -375,6 +386,7 @@ function renderZoneProps() {
   hook("card", "card"); hook("shadow", "shadow"); hook("stroke", "stroke"); hook("usegrad", "useGrad");
   hook("gradA", "gradA"); hook("gradB", "gradB"); hook("icon", "icon"); hook("decor", "decor");
   hook("group", "group"); hook("groupcols", "groupcols");
+  hook("layer", "layer"); hook("opacity", "opacity"); hook("edgemask", "edgeMask"); hook("gridfx", "gridFx");
   hook("text", "text"); hook("font", "font"); hook("size", "size"); hook("color", "color"); hook("bgcolor", "bgcolor");
   hook("bold", "bold"); hook("italic", "italic"); hook("align", "align"); hook("effect", "effect");
   hook("speed", "speed"); hook("lsp", "linespacing");
@@ -588,6 +600,8 @@ function exportFiles() {
       if (z.useGrad) { vsty += kvLine("GRADIENT", z.gradA + "," + z.gradB); }
       vsty += kvLine("SHADOW", z.shadow ? "yes" : ""); vsty += kvLine("STROKE", z.stroke ? "yes" : "");
       vsty += kvLine("TABNUM", z.tabnum ? "yes" : ""); vsty += kvLine("ICON", z.icon); vsty += kvLine("DECOR", z.decor);
+      vsty += kvLine("LAYER", z.layer); vsty += kvLine("OPACITY", z.opacity);
+      vsty += kvLine("EDGE_MASK", z.edgeMask); vsty += kvLine("GRID_FX", z.gridFx);
       if ((sty + vsty).trim()) { files.push({ name: dir + "style.txt", content: sty + vsty }); }
     });
   });

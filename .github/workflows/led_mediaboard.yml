@@ -1,4 +1,4 @@
-name: MediaBoard-v3-build-test
+name: MediaBoard-v4-build-test
 on:
   push:
     paths:
@@ -32,7 +32,7 @@ jobs:
           node --check /tmp/_ed.js
           echo "ALL SYNTAX OK"
 
-      - name: Functional test v3 in Debian bookworm (real chromium + Xvfb, arm64)
+      - name: Functional test v4 in Debian bookworm (real chromium + Xvfb, arm64)
         run: |
           docker run --rm -v "$GITHUB_WORKSPACE:/w" -w /w/mediaboard debian:bookworm bash -c '
             set -e
@@ -42,9 +42,10 @@ jobs:
               fonts-dejavu-core fonts-noto-cjk >/dev/null 2>&1
             chromium --version
             # ---- 造测试素材 ----
-            mkdir -p content/主画面 content/九宫格 content/渐变卡 content/公告 content/二维码 content/时钟 content/页2主 data
+            mkdir -p content/主画面 content/九宫格 content/渐变卡 content/公告 content/二维码 content/时钟 content/页2主 content/叠加卡 content/页3过期 data
             convert -size 1280x720 xc:"#0a3c78" -pointsize 90 -fill white -gravity center -annotate 0 "MAIN" content/主画面/01-main.png
             convert -size 1280x720 xc:blue content/页2主/01-blue.png
+            convert -size 1280x720 xc:"#00a000" content/页3过期/01-green.png
             convert -size 640x360 xc:red     content/九宫格/01.png
             convert -size 640x360 xc:"#00c850" content/九宫格/02.png
             convert -size 640x360 xc:"#a000dc" content/九宫格/03.png
@@ -57,8 +58,11 @@ jobs:
             printf "TITLE=扫码\nCOLOR=#111111\nBGCOLOR=#ffffff\nECL=M\nPADDING=0.3\n" > content/二维码/style.txt
             printf "MODE=dial\nCOLOR=#ffffff\nBGCOLOR=#101820\n" > content/时钟/style.txt
             printf "GROUP=grid\nGROUPCOLS=2\nCARD=yes\n" > content/九宫格/style.txt
+            printf "叠加卡 图层与透明验证\n" > content/叠加卡/text.txt
+            printf "SIZE=4\nCOLOR=#ffffff\nGRADIENT=#c02030,#e05060\nCARD=yes\nRADIUS=1.4\nEDGE_MASK=6\nGRID_FX=4\nLAYER=1\nOPACITY=60\nEFFECT=static\n" > content/叠加卡/style.txt
             printf "{\"items\":[\"值班长:张三\",\"值班员:李四\"]}" > data/值班.json
-            printf "主画面=g:1,1,6,6,4\n九宫格=g:1,7,6,6,4\n渐变卡=g:7,1,3,6,,文本\n公告=g:7,7,3,6,,公告\n二维码=g:10,1,2,4,,二维码\n时钟=g:10,5,2,4,,时钟\n--- 8\n页2主=g:1,1,12,12,4\n" > layout.txt
+            printf "主画面=g:1,1,6,6,4\n九宫格=g:1,7,6,6,4\n渐变卡=g:7,1,3,6,,文本\n公告=g:7,7,3,6,,公告\n二维码=g:10,1,2,4,,二维码\n时钟=g:10,5,2,4,,时钟\n--- 8\n页2主=g:1,1,12,12,4\n叠加卡=8,20,84,58,,文本\n--- 8\n@VALID=2000-01-01~2000-12-31\n@PLAYS=5\n页3过期=g:1,1,12,12,4\n" > layout.txt
+            printf "# 定时指令（时间取不到当前分钟，只验证解析）\n00:01=play:1\n00:02=pause\n" > schedule.txt
             echo "麒麟看板 v3 字幕滚动验证 ABC123" > ticker.txt
             printf "DURATION=4\nSOUND=no\nRELOAD_MINUTES=0\nFILL=contain\nTRANSITION=fade\nTRANSITION_TIME=0.5\nPAGE_DURATION=8\nPERF=high\nKENBURNS=no\nTWINKLE=no\nTICKER_EFFECT=scroll-left\nTICKER_SPEED=90\nTICKER_COLOR=#ffff00\nTICKER_BGCOLOR=#ff00ff\nTICKER_SIZE=5.5\nTICKER_HEIGHT=7\nTICKER_MASK=yes\nNOTIFY_MINUTES=5\n" > settings.txt
             # ---- 1) playlist 结构断言 ----
@@ -74,8 +78,22 @@ jobs:
             grep -q "perf:\"high\"" playlist.js        || { echo "FAIL: perf missing"; exit 1; }
             grep -q "mask:true" playlist.js            || { echo "FAIL: ticker mask missing"; exit 1; }
             PAGES=$(grep -c "{duration:8,zones:" playlist.js)
-            [ "$PAGES" -eq 2 ] || { echo "FAIL: pages=$PAGES expect 2"; exit 1; }
-            echo "PASS: playlist v3 (grid coords/qr/notice/gradient/card/padding/icon/perf/mask/pages)"
+            [ "$PAGES" -eq 3 ] || { echo "FAIL: pages=$PAGES expect 3"; exit 1; }
+            grep -q 'layer:"1"' playlist.js           || { echo "FAIL: layer missing"; exit 1; }
+            grep -q 'opacity:"60"' playlist.js         || { echo "FAIL: opacity missing"; exit 1; }
+            grep -q 'edge_mask:"6"' playlist.js        || { echo "FAIL: edge_mask missing"; exit 1; }
+            grep -q 'grid_fx:"4"' playlist.js          || { echo "FAIL: grid_fx missing"; exit 1; }
+            grep -q 'plays:5' playlist.js              || { echo "FAIL: page plays missing"; exit 1; }
+            grep -q 'valid:"2000-01-01~2000-12-31"' playlist.js || { echo "FAIL: page valid missing"; exit 1; }
+            grep -q '{t:"00:01",cmd:"play:1"}' playlist.js || { echo "FAIL: schedule missing"; exit 1; }
+            grep -q 'ticker:{.*overlay:true' playlist.js || { echo "FAIL: ticker overlay missing"; exit 1; }
+            # 字体包：内置 woff2 必须进 fontfaces（中文显示名）
+            [ -f fonts/SourceHanSansSC-Regular.woff2 ] || { echo "FAIL: font not packaged"; exit 1; }
+            grep -q 'family:"思源黑体 常规"' playlist.js || { echo "FAIL: fontface family missing"; exit 1; }
+            grep -q 'format:"woff2"' playlist.js        || { echo "FAIL: fontface woff2 format missing"; exit 1; }
+            # 纹理素材
+            [ -f textures/vignette.png ] || { echo "FAIL: texture missing"; exit 1; }
+            echo "PASS: playlist v4 (grid/qr/notice/gradient/layer+opacity/edge_mask/grid_fx/plays/valid/schedule/fonts/textures/pages=3)"
             # ---- 2) JS 无错误 ----
             chromium --headless --no-sandbox --disable-gpu --test-type \
               --allow-file-access-from-files --window-size=1280,720 \
@@ -122,10 +140,11 @@ jobs:
               --autoplay-policy=no-user-gesture-required \
               --app="file:///w/mediaboard/player.html" >/dev/null 2>&1 &
             CH_PID=$!
-            sleep 2.5;  import -window root /w/shot_v3_p1.png
-            sleep 8.5;  import -window root /w/shot_v3_p2.png
+            sleep 2.5;  import -window root /w/shot_v4_p1.png
+            sleep 8.5;  import -window root /w/shot_v4_p2.png
+            sleep 8.5;  import -window root /w/shot_v4_p3.png
             kill $CH_PID $XVFB_PID 2>/dev/null || true
-            ls -l /w/shot_v3_p1.png /w/shot_v3_p2.png
+            ls -l /w/shot_v4_p1.png /w/shot_v4_p2.png /w/shot_v4_p3.png
             # ---- 6) 像素级断言 ----
             python3 - <<PYEOF
           import subprocess
@@ -139,7 +158,7 @@ jobs:
                                     "-format", "%[fx:int(255*r)] %[fx:int(255*g)] %[fx:int(255*b)]",
                                     "info:"], capture_output=True, text=True).stdout
               return [int(float(t)) for t in out.split()]
-          S1, S2 = "/w/shot_v3_p1.png", "/w/shot_v3_p2.png"
+          S1, S2, S3 = "/w/shot_v4_p1.png", "/w/shot_v4_p2.png", "/w/shot_v4_p3.png"
           # 主画面（蓝）
           r, g, b = px(S1, 100, 200); print("main:", r, g, b)
           assert b > 80 and r < 30, "FAIL: main zone not blue"
@@ -170,10 +189,17 @@ jobs:
           # 字幕条品红底
           r, g, b = px(S1, 200, 700); print("ticker:", r, g, b)
           assert r > 90 and b > 90 and g < 70, "FAIL: ticker bar not magenta"
-          # 页2: 全屏蓝（节目页切换）
-          r, g, b = px(S2, 320, 320); print("page2:", r, g, b)
-          assert b > 80 and r < 30, "FAIL: page switch broken"
-          print("ALL V3 FUNCTIONAL TESTS PASSED")
+          # 页2: 全屏蓝底 + 叠加卡（图层 z-index + 透明度混合）
+          r, g, b = px(S2, 320, 320); print("page2 overlay center:", r, g, b)
+          assert r > 90 and b > 45 and g < 110, "FAIL: overlay card not blended over blue"
+          r, g, b = px(S2, 30, 620); print("page2 corner:", r, g, b)
+          assert b > 80 and r < 30, "FAIL: page2 background not blue"
+          # 页3 = 过期页(VALID 2000 年)：必须被跳过，回到页1 而不是绿色
+          r, g, b = px(S3, 100, 200); print("page3->page1 main:", r, g, b)
+          assert b > 80 and r < 30 and g < 120, "FAIL: expired page not skipped (got %s)" % ([r, g, b],)
+          v = st(S3, 540, 0, 540, 300); print("p3 grid peak:", v[4:])
+          assert v[4] > 150, "FAIL: page1 grid missing after expired-page skip"
+          print("ALL V4 FUNCTIONAL TESTS PASSED")
           PYEOF
           '
 
@@ -192,7 +218,7 @@ jobs:
             apt-get install -y -qq imagemagick >/dev/null 2>&1
             mkdir -p /w/mediaboard/content /w/mediaboard/fonts
             convert -size 1280x720 "xc:#103050" -pointsize 56 -fill white -gravity center \
-              -annotate 0 "MediaBoard v3 Ready" /w/mediaboard/content/00-welcome.png
+              -annotate 0 "MediaBoard v4 Ready" /w/mediaboard/content/00-welcome.png
             chown -R "$(stat -c %u:%g /w)" /w/mediaboard
           '
           cd "$GITHUB_WORKSPACE"
@@ -201,15 +227,16 @@ jobs:
           ls -lh mediaboard-kylin-arm64.tar.gz
           echo "--- bundle entries ---"
           tar tzf mediaboard-kylin-arm64.tar.gz | wc -l
-          tar tzf mediaboard-kylin-arm64.tar.gz | grep -E "editor.html|qr.js|ziputil.js|templates/README|player.js|start.sh" | head
+          tar tzf mediaboard-kylin-arm64.tar.gz | grep -E "editor.html|qr.js|ziputil.js|templates/README|player.js|start.sh|fonts/|textures/|schedule.txt" | head -20
 
       - name: Upload artifact
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: mediaboard-v3-arm64
+          name: mediaboard-v4-arm64
           path: |
             mediaboard-kylin-arm64.tar.gz
-            shot_v3_p1.png
-            shot_v3_p2.png
+            shot_v4_p1.png
+            shot_v4_p2.png
+            shot_v4_p3.png
             shot_editor.png

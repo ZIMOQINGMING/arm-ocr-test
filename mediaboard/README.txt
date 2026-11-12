@@ -1,4 +1,4 @@
-MediaBoard v3 离线多媒体看板（麒麟V10 ARM64 · LEDvision 全功能 + 视觉增强版）
+MediaBoard v4 离线多媒体看板（麒麟V10 ARM64 · LEDvision 编排对齐 + 图层合成版）
 ====================================================================
 
 零依赖：只用系统自带 chromium 浏览器，不联网、不装任何软件。
@@ -56,8 +56,16 @@ MediaBoard v3 离线多媒体看板（麒麟V10 ARM64 · LEDvision 全功能 + �
     SHADOW=yes       文字阴影（大屏远距离可读性）
     STROKE=yes       白字黑描边（浅底上尤其需要）
     TABNUM=yes       等宽数字（时钟跳动不抖）
-    ICON=horn        图标 info/warn/star/clock/horn/check/flag
+    ICON=horn        图标 29 种：info/warn/star/clock/horn/check/flag/arrowR/arrowL/
+                     arrowUp/arrowDown/calendar/user/phone/mail/pin/chart/gear/sun/moon/
+                     cloud/battery/wifi/heart/shield/fire/doc/speaker/play
     DECOR=line       装饰：line 顶部细线 / corner 四角角标
+    —— v4 合成与特效（对齐 LEDvision 的窗口层次/分块特效）——
+    LAYER=1          图层：1 最上层，数字越大越靠后；不写=按 layout 书写顺序叠放
+    OPACITY=70       分区透明度 0-100（做"背景视频 + 半透明信息卡"必须两项一起用）
+    EDGE_MASK=6      四边渐隐 %，让分区融进背景（柔和边缘，不写=不要）
+    GRID_FX=4|9|16   分块特效：静态内容分 4/9/16 块错峰入场；
+                     视频/多图轮播分区自动整窗降级（软渲染不硬扛）
   —— 文本窗 ——
     FONT=字体名 SIZE=6 COLOR=#00ff00 BGCOLOR=#222222 BOLD=yes ITALIC=no
     ALIGN=center LINESPACING=1.5
@@ -78,23 +86,49 @@ MediaBoard v3 离线多媒体看板（麒麟V10 ARM64 · LEDvision 全功能 + �
   —— 文件窗 ——
     GROUP=grid  GROUPCOLS=2   九宫格：分区内多图一次铺开（默认轮播）
 
+【播放规则：页级有效期与次数（v4）】
+  layout.txt 里，在 --- 之后、该页分区之前加：
+    @PLAYS=3                      这一页播 3 次后跳过（不写=一直循环）
+    @VALID=2026-01-01~2026-12-31  只在有效期播，过期自动跳过
+  所有页都播完（次数用尽）会自动清零重新轮，不会停在最后一页。
+
+【定时指令表 schedule.txt（v4）】
+  每行 HH:MM=指令，按本机时钟执行，同一分钟只执行一次：
+    play:2        跳到第 2 页        pause/resume   暂停/恢复自动换页
+    screenoff     全屏黑            screenon       取消黑屏
+  只做播放器内部动作，不重启、不关机（浏览器权限边界）。样例见 schedule.txt。
+
 【滚动字幕 ticker.txt + settings.txt】
   ticker.txt 每行一段；settings.txt 里调效果/速度/字体/字号/颜色/底色/
   条高/分隔符/两端渐隐(TICKER_MASK)。
+  v4 起字幕可以当"叠加层"用（视频全屏也能压字）：
+    TICKER_OVERLAY=yes   浮在所有分区之上，不占布局（默认）
+    TICKER_OVERLAY=no    舞台自动给字幕让位，分区不被压住
+    TICKER_POS=top|bottom 字幕在顶还是底
 
 【视觉增强与性能档位 settings.txt】
-  TRANSITION=fade|fade-zoom|blur-fade|slide-soft|cover-*|wipe-*|random|none
+  TRANSITION=fade|fade-zoom|blur-fade|slide-soft|flip-3d|depth-zoom|cover-*|wipe-*|random|none
+                        flip-3d=卡片翻转感 depth-zoom=从深处推出（3D 观感，非真 3D）
   TRANSITION_TIME=0.8   特效时长
   KENBURNS=yes          图片缓慢推近（静图变"活"）
   PERF=high|mid|low     high 全效果 / mid 去模糊与 KenBurns / low 只留淡入淡出
                         —— ARM64 软渲染卡顿时直接调低，效果与流畅解耦
   BGCOLOR / BGIMAGE / BGMUSIC / SCREEN_OFF(定时黑屏防烧屏) / TWINKLE
 
-【字体选择】
-  把 .ttf/.otf/.woff 丢进 fonts/，字体名=文件名（去扩展名），
-  FONT=方正楷体 即可用；编辑器里的字体下拉会自动读 fonts.json。
-  系统字体可用 fc-list :lang=zh 查（Noto Sans/Serif CJK 一般都有）。
-  提示：完整中文字体 10MB+，建议用子集化字体（pyftsubset 可把 10MB 压到几百 KB）。
+【字体包（v4 已内置 3 款子集字体，共 6.5MB）】
+  fonts/ 里现成可用，style.txt 直接写中文名：
+    FONT=思源黑体 常规   /  FONT=思源黑体 粗   /  FONT=思源宋体 粗
+  子集范围：GB2312 常用字 + 英文数字标点（7545 字），正文/标题都够；生僻字会回落到系统字体。
+  显示名映射写在 fonts/FONTS.txt（"文件名=显示名"），想改成别的名字改这里即可。
+  自己加字体：.ttf/.otf/.woff/.woff2 丢进 fonts/，名字默认=文件名（去扩展名）。
+  完整中文字库 10MB+ 在 ARM64 离网机上加载慢，务必用子集：pyftsubset 一条命令压到 1/8。
+
+【纹理素材（v4 内置 6 张，程序化生成、无版权风险）】
+  textures/ 里：brushed 金属拉丝 / grid 细网格 / carbon 碳纤维 / noise 细颗粒 /
+                beams 斜向光带 / vignette 中心提亮
+  用法：settings.txt 写  BGIMAGE=textures/vignette.png
+  也可以拷进某个分区当图片素材用。尺寸 1280x720，任何分辨率都能铺满。
+  注意：真实拍摄的 4K 动态背景视频请自行准备（离网机别同时解码多条视频）。
 
 【PPT/Word/Excel】
   直接放进 content/（或分区目录），启动时自动转图（需 WPS 或 LibreOffice）；

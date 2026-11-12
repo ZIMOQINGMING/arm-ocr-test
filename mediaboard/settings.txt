@@ -17,4 +17,8 @@ TICKER_BGCOLOR=#dbe6f5
 TICKER_BOLD=yes
 TICKER_HEIGHT=8
 TICKER_MASK=yes
+# 字幕位置与覆盖方式（v4）
+TICKER_POS=bottom
+# yes=字幕浮在画面上（视频/全屏分区也能压字）；no=舞台给字幕让位
+TICKER_OVERLAY=yes
 NOTIFY_MINUTES=5

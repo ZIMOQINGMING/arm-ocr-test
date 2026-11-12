@@ -70,7 +70,30 @@
     clock: '<circle cx="12" cy="12" r="10"/><line x1="12" y1="12" x2="12" y2="6"/><line x1="12" y1="12" x2="16" y2="14"/>',
     horn: '<path d="M3 10 v4 h3 l5 4 V6 l-5 4 Z"/><path d="M15 9 a4 4 0 0 1 0 6"/><path d="M17.5 7 a7 7 0 0 1 0 10"/>',
     check: '<circle cx="12" cy="12" r="10"/><path d="M8 12 l3 3 l5 -6"/>',
-    flag: '<path d="M5 3 v18"/><path d="M5 4 h12 l-3 4 l3 4 h-12"/>'
+    flag: '<path d="M5 3 v18"/><path d="M5 4 h12 l-3 4 l3 4 h-12"/>',
+    // ---- v4 扩充：状态/箭头/业务类，纯几何路径，零依赖零字体 ----
+    arrowR: '<line x1="4" y1="12" x2="20" y2="12"/><path d="M14 6 l6 6 l-6 6"/>',
+    arrowL: '<line x1="20" y1="12" x2="4" y2="12"/><path d="M10 6 l-6 6 l6 6"/>',
+    arrowUp: '<line x1="12" y1="20" x2="12" y2="4"/><path d="M6 10 l6 -6 l6 6"/>',
+    arrowDown: '<line x1="12" y1="4" x2="12" y2="20"/><path d="M6 14 l6 6 l6 -6"/>',
+    calendar: '<rect x="3" y="5" width="18" height="16" rx="2"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="8" y1="3" x2="8" y2="7"/><line x1="16" y1="3" x2="16" y2="7"/>',
+    user: '<circle cx="12" cy="8" r="4"/><path d="M4 21 a8 8 0 0 1 16 0"/>',
+    phone: '<path d="M7 3 h10 v18 h-10 Z"/><line x1="11" y1="18" x2="13" y2="18"/>',
+    mail: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7 l9 6 l9 -6"/>',
+    pin: '<path d="M12 2 a7 7 0 0 1 7 7 c0 5 -7 13 -7 13 s-7 -8 -7 -13 a7 7 0 0 1 7 -7 Z"/><circle cx="12" cy="9" r="2.5"/>',
+    chart: '<line x1="4" y1="20" x2="20" y2="20"/><rect x="6" y="12" width="3" height="8"/><rect x="11" y="7" width="3" height="13"/><rect x="16" y="10" width="3" height="10"/>',
+    gear: '<line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/><circle cx="9" cy="7" r="2.1" fill="currentColor"/><circle cx="15" cy="12" r="2.1" fill="currentColor"/><circle cx="10" cy="17" r="2.1" fill="currentColor"/>',
+    sun: '<circle cx="12" cy="12" r="4.2"/><path d="M12 2 v2.5 M12 19.5 v2.5 M2 12 h2.5 M19.5 12 h2.5 M4.9 4.9 l1.8 1.8 M17.3 17.3 l1.8 1.8 M19.1 4.9 l-1.8 1.8 M6.7 17.3 l-1.8 1.8"/>',
+    moon: '<path d="M20 14 a8.5 8.5 0 1 1 -9.5 -11 a7 7 0 0 0 9.5 11 Z"/>',
+    cloud: '<path d="M7 18 h10 a4 4 0 0 0 0 -8 a6 6 0 0 0 -11.6 1.6 A3.4 3.4 0 0 0 7 18 Z"/>',
+    battery: '<rect x="2" y="8" width="17" height="8" rx="2"/><line x1="21" y1="11" x2="21" y2="13"/><rect x="4" y="10" width="9" height="4" fill="currentColor" stroke="none"/>',
+    wifi: '<path d="M3 9 a14 14 0 0 1 18 0"/><path d="M6.5 12.5 a9 9 0 0 1 11 0"/><path d="M10 16 a4.2 4.2 0 0 1 4 0"/><circle cx="12" cy="19.2" r="1.1" fill="currentColor" stroke="none"/>',
+    heart: '<path d="M12 20 C4 14.5 3 10 5.6 7.4 a4.4 4.4 0 0 1 6.4 .6 a4.4 4.4 0 0 1 6.4 -.6 C21 10 20 14.5 12 20 Z"/>',
+    shield: '<path d="M12 3 l8 3 v6 c0 5 -4 8 -8 9 c-4 -1 -8 -4 -8 -9 V6 Z"/><path d="M8.5 12 l2.6 2.6 l4.6 -5"/>',
+    fire: '<path d="M12 3 c1 4 5 5 5 9 a5 5 0 0 1 -10 0 c0 -2 1 -3 2 -4 c0 2 1 3 2 3 c1 -2 -1 -5 1 -8 Z"/>',
+    doc: '<path d="M6 3 h8 l4 4 v14 h-12 Z"/><path d="M14 3 v4 h4"/><line x1="9" y1="12" x2="15" y2="12"/><line x1="9" y1="16" x2="15" y2="16"/>',
+    speaker: '<rect x="5" y="9" width="4" height="6"/><path d="M9 9 l6 -4 v14 l-6 -4 Z"/><path d="M18 9 a4 4 0 0 1 0 6"/>',
+    play: '<circle cx="12" cy="12" r="9.4"/><polygon points="10,7.6 17.4,12 10,16.4" fill="currentColor" stroke="none"/>'
   };
   function iconSvg(name, hVh) {
     if (!ICONS[name]) { return null; }
@@ -163,13 +186,13 @@
   }
 
   // ---------- 切换特效（14 种） ----------
-  var TLIST = ["fade", "fade-zoom", "blur-fade", "slide-soft",
+  var TLIST = ["fade", "fade-zoom", "blur-fade", "slide-soft", "flip-3d", "depth-zoom",
     "cover-l", "cover-r", "cover-u", "cover-d",
     "wipe-l", "wipe-r", "wipe-u", "wipe-d", "wipe-lu", "wipe-ru"];
   function pickTransition() {
     var t = P.transition || "fade";
     if (perfLow()) { return "fade"; }              // 低档位统一降级为淡入淡出
-    if (perfMid() && t === "blur-fade") { return "fade"; } // 中档位模糊转场降级
+    if (perfMid() && (t === "blur-fade" || t === "flip-3d" || t === "depth-zoom")) { return "fade"; } // 中档位重转场降级
     if (t === "random") { return TLIST[Math.floor(Math.random() * TLIST.length)]; }
     return TLIST.indexOf(t) >= 0 ? t : "fade";
   }
@@ -179,6 +202,10 @@
       case "fade-zoom": return [{ opacity: 0, transform: "scale(1.06)" }, { opacity: 1, transform: "scale(1)" }];
       case "blur-fade": return [{ opacity: 0, filter: "blur(14px)" }, { opacity: 1, filter: "blur(0px)" }];
       case "slide-soft": return [{ opacity: 0, transform: "translateX(4%)" }, { opacity: 1, transform: "translateX(0)" }];
+      case "flip-3d": return [{ opacity: 0, transform: "perspective(1200px) rotateY(58deg)" },
+        { opacity: 1, transform: "perspective(1200px) rotateY(0deg)" }];
+      case "depth-zoom": return [{ opacity: 0, transform: "perspective(900px) translateZ(-260px)" },
+        { opacity: 1, transform: "perspective(900px) translateZ(0)" }];
       case "cover-l": return [{ transform: "translateX(-100%)" }, { transform: "translateX(0)" }];
       case "cover-r": return [{ transform: "translateX(100%)" }, { transform: "translateX(0)" }];
       case "cover-u": return [{ transform: "translateY(-100%)" }, { transform: "translateY(0)" }];
@@ -701,13 +728,28 @@
     var css = "position:absolute;overflow:hidden;"
       + "left:" + (num(z.x, 0) + m) + "%;top:" + (num(z.y, 0) + m) + "%;"
       + "width:" + Math.max(2, num(z.w, 100) - 2 * m) + "%;height:" + Math.max(2, num(z.h, 100) - 2 * m) + "%;";
+    // LAYER: 1 为最顶层，数字越大越靠后（与 LEDvision 一致）；未设置则按书写顺序叠放
+    if (z.layer) { css += "z-index:" + Math.max(1, 101 - clamp(Math.round(num(z.layer, 0)), 1, 99)) + ";"; }
+    if (z.opacity != null && z.opacity !== "") {
+      css += "opacity:" + (clamp(num(z.opacity, 100), 0, 100) / 100) + ";";
+    }
     if (z.radius) { css += "border-radius:" + clamp(num(z.radius, 1), 0, 10) + "vh;"; }
     else if (truthy(z.card)) { css += "border-radius:1.2vh;"; }
-    if (truthy(z.card) && !perfLow()) { css += "box-shadow:0 1vh 2.4vh rgba(0,0,0,.35);"; }
+    if (truthy(z.card) && !perfLow()) { css += "box-shadow:0 .3vh .8vh rgba(0,0,0,.45),0 1.2vh 3vh rgba(0,0,0,.25);"; }
     if (z.gradient) {
       var ab = String(z.gradient).split(",");
       var a = (ab[0] || "#101820").trim(), b = (ab[1] || ab[0] || "#1a3a6b").trim();
       css += "background:linear-gradient(135deg," + a + "," + b + ");";
+    }
+    // EDGE_MASK：四边渐隐融入背景（柔和边缘）。yes=6%，或 EDGE_MASK=4~30 自定义百分比
+    if (z.edge_mask && !perfLow()) {
+      var emp = truthy(z.edge_mask) ? 6 : clamp(num(z.edge_mask, 0), 0, 30);
+      if (emp > 0) {
+        var mh = "linear-gradient(90deg,rgba(0,0,0,0),rgba(0,0,0,1) " + emp + "%,rgba(0,0,0,1) " + (100 - emp) + "%,rgba(0,0,0,0))";
+        var mv = "linear-gradient(180deg,rgba(0,0,0,0),rgba(0,0,0,1) " + emp + "%,rgba(0,0,0,1) " + (100 - emp) + "%,rgba(0,0,0,0))";
+        css += "-webkit-mask-image:" + mh + "," + mv + ";-webkit-mask-composite:source-in;"
+          + "mask-image:" + mh + "," + mv + ";mask-composite:intersect;";
+      }
     }
     return css;
   }
@@ -723,29 +765,156 @@
     else if (z.notice) { makeNoticeZone(z, el); }
     else { makeMediaZone(z, el); }
     applyDecor(z, el);
+    applyGridFx(z, el);
     currentZones.push(z);
     return el;
+  }
+  // ---------- 分块特效 GRID_FX=4|9|16（对齐 LEDvision 16 分块；静态内容启用） ----------
+  // 适用：文本/公告/计时/单张图片分区。视频、多图轮播、二维码、表盘时钟为动态或位图内容，
+  // 分块克隆会丢状态或重复解码，自动降级为整窗入场（与 LEDvision 对视频的处理一致）。
+  function gridFxAllowed(z) {
+    if (perfLow() || perfMid()) { return false; }
+    if (z.qr || z.clock) { return false; }
+    if (z.slides) {
+      if (z.slides.length !== 1) { return false; }
+      if (isVideo(z.slides[0])) { return false; }
+    }
+    return true;
+  }
+  function applyGridFx(z, el) {
+    var n = clamp(Math.round(num(z.grid_fx, 0)), 0, 16);
+    if (n !== 4 && n !== 9 && n !== 16) { return; }
+    if (!gridFxAllowed(z)) { return; }
+    var html = el.innerHTML;
+    if (!html || !html.trim()) { return; }
+    var cols = n === 4 ? 2 : (n === 9 ? 3 : 4), rows = n / cols;
+    el.innerHTML = "";
+    var r, c, i = 0;
+    for (r = 0; r < rows; r++) {
+      for (c = 0; c < cols; c++, i++) {
+        var b = document.createElement("div");
+        b.style.cssText = "position:absolute;overflow:hidden;"
+          + "left:" + (c * 100 / cols) + "%;top:" + (r * 100 / rows) + "%;"
+          + "width:" + (100 / cols) + "%;height:" + (100 / rows) + "%;";
+        var inner = document.createElement("div");
+        inner.style.cssText = "position:absolute;width:" + (cols * 100) + "%;height:" + (rows * 100) + "%;"
+          + "left:" + (-c * 100) + "%;top:" + (-r * 100) + "%;";
+        inner.innerHTML = html;
+        b.appendChild(inner);
+        el.appendChild(b);
+        // 错峰入场：斜向序（左上→右下），透明度+轻微缩放
+        try {
+          b.animate([{ opacity: 0, transform: "scale(.94)" }, { opacity: 1, transform: "scale(1)" }],
+            { duration: 420, delay: (r + c) * 90, easing: EASE_STD, fill: "backwards" });
+        } catch (e) {}
+      }
+    }
+  }
+  // ---------- 播放规则：VALID 有效期 / PLAYS 播放次数 ----------
+  var playCounts = {};
+  var pausedBySchedule = false;
+  var screenOffBySchedule = false;
+  function todayStr() {
+    var d = new Date();
+    function p2(x) { return (x < 10 ? "0" : "") + x; }
+    return d.getFullYear() + "-" + p2(d.getMonth() + 1) + "-" + p2(d.getDate());
+  }
+  function pageValid(p) {
+    if (!p.valid) { return true; }
+    var ab = String(p.valid).split("~");
+    var t = todayStr();
+    if (ab[0] && t < ab[0]) { return false; }
+    if (ab[1] && t > ab[1]) { return false; }
+    return true;
+  }
+  function pagePlayable(i) {
+    var p = pages[i];
+    if (!pageValid(p)) { return false; }
+    var lim = Math.round(num(p.plays, 0));
+    if (lim > 0 && (playCounts[i] || 0) >= lim) { return false; }
+    return true;
+  }
+  function anyPlayable() {
+    for (var i = 0; i < pages.length; i++) { if (pagePlayable(i)) { return true; } }
+    return false;
+  }
+  function nextPageIdx(from) {
+    // 全部播完（PLAYS 用尽）时清零重新轮；VALID 过期的不复活
+    if (!anyPlayable()) { playCounts = {}; }
+    for (var k = 1; k <= pages.length; k++) {
+      var j = (from + k) % pages.length;
+      if (pagePlayable(j)) { return j; }
+    }
+    return (from + 1) % pages.length;
+  }
+  function firstPageIdx() {
+    if (!anyPlayable()) { playCounts = {}; }
+    for (var i = 0; i < pages.length; i++) { if (pagePlayable(i)) { return i; } }
+    return 0;
   }
   function renderPage(i) {
     if (pageTimer) { clearTimeout(pageTimer); pageTimer = null; }
     currentZones = [];
     stage.innerHTML = "";
     pageIdx = i;
+    playCounts[i] = (playCounts[i] || 0) + 1;
     pages[i].zones.forEach(makeZone);
     updateDiag();
-    if (pages.length > 1 && num(pages[i].duration, 0) > 0) {
+    if (pages.length > 1 && num(pages[i].duration, 0) > 0 && !pausedBySchedule) {
       pageTimer = setTimeout(switchPage, num(pages[i].duration, 0) * 1000);
     }
   }
   function switchPage() {
     if (pageTimer) { clearTimeout(pageTimer); pageTimer = null; }
+    if (pausedBySchedule) { return; }
     stage.style.transition = "opacity 350ms linear";
     stage.style.opacity = "0";
     setTimeout(function () {
-      renderPage((pageIdx + 1) % pages.length);
+      renderPage(nextPageIdx(pageIdx));
       stage.style.opacity = "1";
       setTimeout(function () { stage.style.transition = ""; }, 420);
     }, 360);
+  }
+
+  // ---------- 定时指令表 schedule.txt ----------
+  // 每 20 秒对齐一次本机时钟；同一条指令同一分钟只执行一次
+  var schedLast = "";
+  function applySchedule() {
+    var list = P.schedule || [];
+    if (!list.length) { return; }
+    var d = new Date();
+    var hm = (d.getHours() < 10 ? "0" : "") + d.getHours() + ":" + (d.getMinutes() < 10 ? "0" : "") + d.getMinutes();
+    if (hm === schedLast) { return; }
+    for (var i = 0; i < list.length; i++) {
+      if (String(list[i].t) !== hm) { continue; }
+      schedLast = hm;
+      runScheduleCmd(String(list[i].cmd || ""));
+    }
+  }
+  function runScheduleCmd(cmd) {
+    if (cmd.indexOf("play:") === 0) {
+      var n = Math.round(num(cmd.slice(5), 0)) - 1;
+      if (n >= 0 && n < pages.length) { pausedBySchedule = false; renderPage(n); }
+    } else if (cmd === "pause") {
+      pausedBySchedule = true;
+      if (pageTimer) { clearTimeout(pageTimer); pageTimer = null; }
+    } else if (cmd === "resume") {
+      pausedBySchedule = false;
+      if (pages.length > 1 && num(pages[pageIdx].duration, 0) > 0) {
+        pageTimer = setTimeout(switchPage, num(pages[pageIdx].duration, 0) * 1000);
+      }
+    } else if (cmd === "screenoff" || cmd === "screenon") {
+      screenOffBySchedule = (cmd === "screenoff");
+      var ov = document.getElementById("mb-screenoff");
+      if (screenOffBySchedule && !ov) {
+        ov = document.createElement("div");
+        ov.id = "mb-screenoff";
+        ov.style.cssText = "position:fixed;top:0;left:0;width:100%;height:100%;background:#000;z-index:99999;";
+        document.body.appendChild(ov);
+      } else if (!screenOffBySchedule && ov) {
+        ov.parentNode.removeChild(ov);
+      }
+    }
   }
 
   // ---------- 背景 / 背景音乐 ----------
@@ -830,6 +999,22 @@
     var fcss = fontCss(tk, 5.5);
     bar.style.display = "block";
     bar.style.height = h + "vh";
+    // TICKER_POS=top|bottom；覆盖模式永远浮在所有分区之上（高于 LAYER 分区的 z-index）
+    var posTop = String(tk.pos || "bottom") === "top";
+    bar.style.top = posTop ? "0" : "auto";
+    bar.style.bottom = posTop ? "auto" : "0";
+    bar.style.zIndex = "9999";
+    // TICKER_OVERLAY=no 时舞台给字幕条让位（分区不被压住）；yes（默认）浮在画面上
+    var stageEl = document.getElementById("stage");
+    if (stageEl) {
+      if (tk.overlay === false) {
+        stageEl.style.height = (100 - h) + "%";
+        stageEl.style.top = posTop ? h + "%" : "0";
+      } else {
+        stageEl.style.height = "100%";
+        stageEl.style.top = "0";
+      }
+    }
     bar.style.background = tk.bgcolor || "rgba(0,0,0,0.72)";
     bar.style.color = tk.color || "#ffff00";
     // 两端渐隐（Chromium 83: -webkit-mask-image 可用；低档位关闭）
@@ -1016,7 +1201,7 @@
       applyBackground();
       var fallback = [{ duration: 0, zones: [{ name: "全屏", x: 0, y: 0, w: 100, h: 100, slides: P.slides || [] }] }];
       pages = (P.pages && P.pages.length) ? P.pages : fallback;
-      renderPage(0);
+      renderPage(firstPageIdx());
       applyTicker();
       applyNotify();
       setState("editor-live");
@@ -1043,11 +1228,13 @@
     if (!hasContent) {
       msgBox.textContent = "MediaBoard 已就绪：请把素材放进 content 目录后重启";
     }
-    renderPage(0);
+    renderPage(firstPageIdx());
     applyTicker();
     applyNotify();
     applyScreenOff();
     applyBgm();
+    applySchedule();
+    setInterval(applySchedule, 20000);
     document.addEventListener("keydown", function (e) {
       if (e.key !== "ArrowRight") { return; }
       for (var i = 0; i < currentZones.length; i++) {

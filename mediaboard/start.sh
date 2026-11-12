@@ -31,6 +31,8 @@ TICKER_BOLD=yes
 TICKER_HEIGHT=9
 TICKER_SEP=""
 TICKER_MASK=yes
+TICKER_POS=bottom
+TICKER_OVERLAY=yes
 SCREEN_OFF=""
 NOTIFY_MINUTES=5
 if [ -f settings.txt ]; then
@@ -62,6 +64,8 @@ if [ -f settings.txt ]; then
       TICKER_HEIGHT) TICKER_HEIGHT="$v";;
       TICKER_SEP) TICKER_SEP="$v";;
       TICKER_MASK) TICKER_MASK="$v";;
+      TICKER_POS) TICKER_POS="$v";;
+      TICKER_OVERLAY) TICKER_OVERLAY="$v";;
       SCREEN_OFF) SCREEN_OFF="$v";;
       NOTIFY_MINUTES) NOTIFY_MINUTES="$v";;
     esac
@@ -69,7 +73,7 @@ if [ -f settings.txt ]; then
 fi
 [ "$SOUND" = "yes" ] && SOUND_JS=true || SOUND_JS=false
 case "$FILL" in cover|fill|contain|scale-down) ;; *) FILL="contain";; esac
-case "$TRANSITION" in fade|fade-zoom|blur-fade|slide-soft|random|cover-l|cover-r|cover-u|cover-d|wipe-l|wipe-r|wipe-u|wipe-d|wipe-lu|wipe-ru|none) ;; *) TRANSITION="fade";; esac
+case "$TRANSITION" in fade|fade-zoom|blur-fade|slide-soft|flip-3d|depth-zoom|random|cover-l|cover-r|cover-u|cover-d|wipe-l|wipe-r|wipe-u|wipe-d|wipe-lu|wipe-ru|none) ;; *) TRANSITION="fade";; esac
 case "$TRANSITION_TIME" in *[!0-9.]*) TRANSITION_TIME=0.8;; esac
 case "$TWINKLE" in yes|1|true) TWINKLE_JS=true;; *) TWINKLE_JS=false;; esac
 case "$PAGE_DURATION" in *[!0-9.]*) PAGE_DURATION=60;; esac
@@ -80,6 +84,7 @@ case "$TICKER_BOLD" in yes|1|true) TICKER_BOLD_JS=true;; *) TICKER_BOLD_JS=false
 case "$TICKER_HEIGHT" in *[!0-9.]*) TICKER_HEIGHT=9;; esac
 case "$TICKER_SEP" in "") TICKER_SEP="　　●　　";; esac
 case "$TICKER_MASK" in no|0|false) TICKER_MASK_JS=false;; *) TICKER_MASK_JS=true;; esac
+case "$TICKER_OVERLAY" in no|0|false) TICKER_OVERLAY_JS=false;; *) TICKER_OVERLAY_JS=true;; esac
 case "$NOTIFY_MINUTES" in *[!0-9.]*) NOTIFY_MINUTES=5;; esac
 case "$BGMUSIC_VOL" in *[!0-9.]*) BGMUSIC_VOL=0.6;; esac
 case "$PERF" in high|mid|low) ;; *) PERF="high";; esac
@@ -158,7 +163,7 @@ style_props() { # $1=分区名, $2=允许键列表(空格分隔)
 }
 
 # 分区级视觉/布局键（对所有窗口类型有效，放进 zone 对象本体）
-ZONE_KEYS="PADDING MARGIN ALIGNV RADIUS CARD GRADIENT SHADOW STROKE TABNUM ICON DECOR GROUP GROUPCOLS"
+ZONE_KEYS="PADDING MARGIN ALIGNV RADIUS CARD GRADIENT SHADOW STROKE TABNUM ICON DECOR GROUP GROUPCOLS LAYER OPACITY EDGE_MASK GRID_FX"
 
 # ---------- 分区条目生成 ----------
 emit_zone() { # 参数: name zx zy zw zh zdur ztype
@@ -218,11 +223,18 @@ NOTIFY_TEXT=""
 
 PAGE_ZONES=""
 PAGE_DUR="$PAGE_DURATION"
+PAGE_PLAYS=""
+PAGE_VALID=""
 flush_page() {
   [ -n "$PAGE_ZONES" ] || return 0
-  printf '{duration:%s,zones:[\n%s\n]},\n' "$PAGE_DUR" "$PAGE_ZONES"
+  local extra=""
+  case "$PAGE_PLAYS" in ""|*[!0-9]*) ;; *) extra="$extra,plays:$PAGE_PLAYS";; esac
+  case "$PAGE_VALID" in [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]~*) extra="$extra,valid:\"$PAGE_VALID\"";; esac
+  printf '{duration:%s,zones:[\n%s\n]%s},\n' "$PAGE_DUR" "$PAGE_ZONES" "$extra"
   PAGE_ZONES=""
   PAGE_DUR="$PAGE_DURATION"
+  PAGE_PLAYS=""
+  PAGE_VALID=""
 }
 
 {
@@ -241,10 +253,10 @@ flush_page() {
   [ -n "$BGMUSIC" ] && echo "bgmusic:\"$(printf '%s' "$BGMUSIC" | esc)\",bgmusicVol:$BGMUSIC_VOL,"
   [ -n "$SCREEN_OFF" ] && echo "screenOff:\"$SCREEN_OFF\","
   [ -n "$NOTIFY_TEXT" ] && printf 'notify:{text:"%s",minutes:%s},\n' "$NOTIFY_TEXT" "$NOTIFY_MINUTES"
-  printf 'ticker:{text:"%s",effect:"%s",speed:%s,size:%s,color:"%s",bgcolor:"%s",bold:%s,height:%s,sep:"%s",mask:%s' \
+  printf 'ticker:{text:"%s",effect:"%s",speed:%s,size:%s,color:"%s",bgcolor:"%s",bold:%s,height:%s,sep:"%s",mask:%s,overlay:%s,pos:"%s"' \
     "$TICKER_TEXT" "$TICKER_EFFECT" "$TICKER_SPEED" "$TICKER_SIZE" \
     "$(printf '%s' "$TICKER_COLOR" | esc)" "$(printf '%s' "$TICKER_BGCOLOR" | esc)" \
-    "$TICKER_BOLD_JS" "$TICKER_HEIGHT" "$(printf '%s' "$TICKER_SEP" | esc)" "$TICKER_MASK_JS"
+    "$TICKER_BOLD_JS" "$TICKER_HEIGHT" "$(printf '%s' "$TICKER_SEP" | esc)" "$TICKER_MASK_JS" "$TICKER_OVERLAY_JS" "$(printf '%s' "$TICKER_POS" | esc)"
   [ -n "$TICKER_FONT" ] && printf ',font:"%s"' "$(printf '%s' "$TICKER_FONT" | esc)"
   echo "},"
   # 字体包
@@ -254,16 +266,35 @@ flush_page() {
     [ -n "$f" ] || continue
     found_font="1"
     fam="$(basename "${f%.*}")"
+    # fonts/FONTS.txt 可写「文件名=中文显示名」，用户 style.txt 里 FONT=思源黑体 常规 即可
+    if [ -f fonts/FONTS.txt ]; then
+      alias_name="$(grep -F "$(basename "$f")=" fonts/FONTS.txt 2>/dev/null | head -1 | cut -d= -f2-)"
+      [ -n "$alias_name" ] && fam="$alias_name"
+    fi
     case "${f##*.}" in
       ttf|TTF) fmt=truetype;;
       otf|OTF) fmt=opentype;;
+      woff2|WOFF2) fmt=woff2;;
       *) fmt=woff;;
     esac
     printf '{family:"%s",url:"%s",format:"%s"},' \
       "$(printf '%s' "$fam" | esc)" "$(printf '%s' "$f" | esc)" "$fmt"
   done <<EOF
-$(find fonts -maxdepth 1 -type f \( -iname "*.ttf" -o -iname "*.otf" -o -iname "*.woff" \) 2>/dev/null | LC_ALL=C sort)
+$(find fonts -maxdepth 1 -type f \( -iname "*.ttf" -o -iname "*.otf" -o -iname "*.woff" -o -iname "*.woff2" \) 2>/dev/null | LC_ALL=C sort)
 EOF
+  echo "],"
+  # 定时指令表 schedule.txt：每行 HH:MM=play:页号|pause|resume|screenoff|screenon（播放器内部指令，不碰系统）
+  echo "schedule:["
+  if [ -f schedule.txt ]; then
+    while IFS='=' read -r st sc; do
+      st="$(printf '%s' "$st" | tr -d ' \r')"
+      sc="$(printf '%s' "$sc" | tr -d ' \r')"
+      case "$st" in ""|\#*) continue;; esac
+      case "$st" in [0-2][0-9]:[0-5][0-9]) ;; *) echo "[定时] 跳过非法时间行: $st=$sc" >&2; continue;; esac
+      case "$sc" in play:*|pause|resume|screenoff|screenon) ;; *) echo "[定时] 跳过未知指令: $sc" >&2; continue;; esac
+      printf '{t:"%s",cmd:"%s"},\n' "$st" "$(printf '%s' "$sc" | esc)"
+    done < schedule.txt
+  fi
   echo "],"
   # 多节目页
   echo "pages:["
@@ -271,6 +302,11 @@ EOF
     while IFS= read -r line || [ -n "$line" ]; do
       line="$(printf '%s' "$line" | tr -d '\r')"
       case "$line" in ""|\#*) continue;; esac
+      # 页级规则（写在页分隔符之后、该页分区之前）：@PLAYS=N 播N次后跳过(0=无限)；@VALID=起~止 日期有效期
+      case "$line" in
+        @PLAYS=*) PAGE_PLAYS="${line#@PLAYS=}"; continue;;
+        @VALID=*) PAGE_VALID="$(printf '%s' "${line#@VALID=}" | tr -d ' ')"; continue;;
+      esac
       # 页分隔符: --- 或 --- 秒数
       case "$line" in
         ---*)
@@ -280,7 +316,7 @@ EOF
           case "$PAGE_DUR" in *[!0-9.]*) PAGE_DUR="$PAGE_DURATION";; ""|0|0.*) PAGE_DUR="$PAGE_DURATION";; esac
           continue;;
       esac
-      case "$line" in *=*) ;; *) echo "[布局] 跳过非法行: $line"; continue;; esac
+      case "$line" in *=*) ;; *) echo "[布局] 跳过非法行: $line" >&2; continue;; esac
       name="$(printf '%s' "${line%%=*}" | tr -d ' ')"
       rest="$(printf '%s' "${line#*=}" | tr -d ' ')"
       zx=""; zy=""; zw=""; zh=""; zdur=""; ztype=""
@@ -298,11 +334,11 @@ EOF
           case "$gc" in ""|*[!0-9]*) gbad=1;; esac
           [ -n "$grs" ] && case "$grs" in *[!0-9]*) gbad=1;; esac
           [ -n "$gcs" ] && case "$gcs" in *[!0-9]*) gbad=1;; esac
-          [ "$gbad" = "1" ] && { echo "[布局] 跳过非法栅格行: $line"; continue; }
+          [ "$gbad" = "1" ] && { echo "[布局] 跳过非法栅格行: $line" >&2; continue; }
           [ -z "$grs" ] && grs=1
           [ -z "$gcs" ] && gcs=1
-          [ "$gr" -ge 1 ] 2>/dev/null && [ "$gr" -le 12 ] || { echo "[布局] 栅格行号越界(1-12): $line"; continue; }
-          [ "$gc" -ge 1 ] 2>/dev/null && [ "$gc" -le 12 ] || { echo "[布局] 栅格列号越界(1-12): $line"; continue; }
+          [ "$gr" -ge 1 ] 2>/dev/null && [ "$gr" -le 12 ] || { echo "[布局] 栅格行号越界(1-12): $line" >&2; continue; }
+          [ "$gc" -ge 1 ] 2>/dev/null && [ "$gc" -le 12 ] || { echo "[布局] 栅格列号越界(1-12): $line" >&2; continue; }
           zdur="$(printf '%s' "$g" | cut -d, -f5)"
           ztype="$(printf '%s' "$g" | cut -d, -f6)"
           # 换算为百分比（12 列 x 12 行）
@@ -315,7 +351,7 @@ EOF
           IFS=',' read -r zx zy zw zh zdur ztype <<EOF
 $rest
 EOF
-          case "$zx$zy$zw$zh" in *[!0-9.]*) echo "[布局] 跳过非法行: $line"; continue;; esac
+          case "$zx$zy$zw$zh" in *[!0-9.]*) echo "[布局] 跳过非法行: $line" >&2; continue;; esac
           ;;
       esac
       zdur="${zdur:-$DURATION}"
@@ -364,7 +400,7 @@ echo "[MediaBoard] playlist.js 已生成"
     first=0
     printf '"%s"' "$(printf '%s' "$fam" | esc)"
   done <<EOF
-$(find fonts -maxdepth 1 -type f \( -iname "*.ttf" -o -iname "*.otf" -o -iname "*.woff" \) 2>/dev/null | LC_ALL=C sort)
+$(find fonts -maxdepth 1 -type f \( -iname "*.ttf" -o -iname "*.otf" -o -iname "*.woff" -o -iname "*.woff2" \) 2>/dev/null | LC_ALL=C sort)
 EOF
   printf ']}'
 } > fonts.json
