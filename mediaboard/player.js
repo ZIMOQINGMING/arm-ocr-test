@@ -88,6 +88,22 @@
   }
   zones.forEach(makeZone);
 
+  // 诊断信息（仅在地址栏带 ?diag 时显示），用于核对分区像素坐标
+  if (location.search.indexOf("diag") >= 0) {
+    var d = document.createElement("pre");
+    var rects = zones.map(function (z) {
+      var el2 = stage.children[zones.indexOf(z)];
+      var r = el2.getBoundingClientRect();
+      return z.name + "=" + Math.round(r.left) + "," + Math.round(r.top)
+        + "," + Math.round(r.width) + "x" + Math.round(r.height);
+    });
+    d.style.cssText = "position:absolute;top:0;left:0;z-index:99;color:#0f0;background:#000;"
+      + "font:12px monospace;margin:0;padding:3px;opacity:.85";
+    d.textContent = "viewport=" + window.innerWidth + "x" + window.innerHeight
+      + " dpr=" + (window.devicePixelRatio || 1) + " | " + rects.join(" | ");
+    document.body.appendChild(d);
+  }
+
   // 键盘手动翻页（作用于第一个媒体分区）
   document.addEventListener("keydown", function (e) {
     var z0 = null;
