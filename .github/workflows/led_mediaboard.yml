@@ -28,6 +28,7 @@ jobs:
             apt-get update -qq >/dev/null
             apt-get install -y -qq chromium imagemagick python3 >/dev/null 2>&1
             chromium --version
+            mkdir -p content
             # 造 3 张测试图：红/绿/蓝，各带大字标号
             convert -size 1280x720 xc:red    -pointsize 90 -fill white -gravity center -annotate 0 "SLIDE-1-RED"   content/01-red.png
             convert -size 1280x720 xc:green  -pointsize 90 -fill white -gravity center -annotate 0 "SLIDE-2-GREEN" content/02-green.png
