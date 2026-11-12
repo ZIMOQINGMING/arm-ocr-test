@@ -22,7 +22,7 @@ jobs:
 
       - name: Functional test in Debian bullseye (real chromium, arm64)
         run: |
-          docker run --rm -v "$GITHUB_WORKSPACE:/w" -w /w/mediaboard debian:bullseye bash -c '
+          docker run --rm -v "$GITHUB_WORKSPACE:/w" -w /w/mediaboard debian:bookworm bash -c '
             set -e
             export DEBIAN_FRONTEND=noninteractive
             apt-get update -qq >/dev/null
@@ -75,7 +75,7 @@ jobs:
         run: |
           cd mediaboard
           rm -f content/01-red.png content/02-green.png content/03-blue.png playlist.js
-          docker run --rm -v "$GITHUB_WORKSPACE:/w" -w /w debian:bullseye bash -c '
+          docker run --rm -v "$GITHUB_WORKSPACE:/w" -w /w debian:bookworm bash -c '
             apt-get update -qq >/dev/null && apt-get install -y -qq imagemagick >/dev/null 2>&1
             convert -size 1280x720 "xc:#103050" -pointsize 60 -fill white -gravity center \
               -annotate 0 "MediaBoard Ready" /w/mediaboard/content/00-welcome.png
