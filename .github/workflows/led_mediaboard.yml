@@ -1,0 +1,93 @@
+name: MediaBoard-build-test
+on:
+  push:
+    paths:
+      - "mediaboard/**"
+      - ".github/workflows/led_mediaboard.yml"
+  workflow_dispatch:
+
+jobs:
+  build-test:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Syntax check scripts
+        run: |
+          bash -n mediaboard/start.sh
+          bash -n mediaboard/install.sh
+          bash -n mediaboard/stop.sh
+          echo "syntax OK"
+
+      - name: Functional test in Debian bullseye (real chromium, arm64)
+        run: |
+          docker run --rm -v "$GITHUB_WORKSPACE:/w" -w /w/mediaboard debian:bullseye bash -c '
+            set -e
+            export DEBIAN_FRONTEND=noninteractive
+            apt-get update -qq >/dev/null
+            apt-get install -y -qq chromium imagemagick python3 >/dev/null 2>&1
+            chromium --version
+            # 造 3 张测试图：红/绿/蓝，各带大字标号
+            convert -size 1280x720 xc:red    -pointsize 90 -fill white -gravity center -annotate 0 "SLIDE-1-RED"   content/01-red.png
+            convert -size 1280x720 xc:green  -pointsize 90 -fill white -gravity center -annotate 0 "SLIDE-2-GREEN" content/02-green.png
+            convert -size 1280x720 xc:blue   -pointsize 90 -fill white -gravity center -annotate 0 "SLIDE-3-BLUE"  content/03-blue.png
+            echo "麒麟播放板联机测试字幕 ABC123" > ticker.txt
+            printf "DURATION=4\nSOUND=no\nRELOAD_MINUTES=0\nTICKER_SPEED=60\nTICKER_COLOR=#ffff00\nTICKER_BGCOLOR=rgba(0,0,0,0.72)\n" > settings.txt
+            # 1) playlist 生成测试
+            MEDIABOARD_TEST=1 bash start.sh
+            SLIDES=$(grep -c "^\"content/" playlist.js || true)
+            echo "slides in playlist.js: $SLIDES"
+            [ "$SLIDES" -ge 3 ] || { echo "FAIL: playlist slides < 3"; exit 1; }
+            grep -q "麒麟播放板联机测试字幕" playlist.js || { echo "FAIL: ticker text missing"; exit 1; }
+            # 2) 渲染测试：chromium 无头截图，虚拟时间快进验证轮播推进
+            chromium --headless --no-sandbox --disable-gpu --window-size=1280,720 \
+              --virtual-time-budget=1500 --screenshot=/w/shot1.png "file:///w/mediaboard/player.html" 2>/dev/null
+            chromium --headless --no-sandbox --disable-gpu --window-size=1280,720 \
+              --virtual-time-budget=9000 --screenshot=/w/shot2.png "file:///w/mediaboard/player.html" 2>/dev/null
+            ls -l /w/shot1.png /w/shot2.png
+            python3 - <<PYEOF
+          import subprocess
+          def avg(f):
+              out = subprocess.run(["convert", f, "-resize", "1x1", "txt:-"],
+                                   capture_output=True, text=True).stdout
+              print(f, "->", out.strip().splitlines()[-1])
+              return out
+          a1 = avg("/w/shot1.png")
+          a2 = avg("/w/shot2.png")
+          assert "srgb" in a1 and "srgb" in a2, "screenshot parse failed"
+          b1 = open("/w/shot1.png","rb").read(); b2 = open("/w/shot2.png","rb").read()
+          assert len(b1) > 20000 and len(b2) > 20000, "screenshot too small (blank?)"
+          assert b1 != b2, "FAIL: two screenshots identical - slideshow not advancing"
+          print("PASS: slideshow advances, screenshots differ")
+          # 3) 字幕条渲染：底部 65px 裁切，标准差>0 说明有内容
+          out = subprocess.run(["convert", "/w/shot1.png", "-crop", "1280x65+0+655", "+repage",
+                                "-format", "%[standard-deviation]", "info:"],
+                               capture_output=True, text=True).stdout
+          print("ticker strip stddev:", out)
+          assert float(out) > 1.0, "FAIL: ticker bar blank"
+          print("PASS: ticker rendered")
+          PYEOF
+            echo "ALL FUNCTIONAL TESTS PASSED"
+          '
+
+      - name: Package clean bundle
+        run: |
+          cd mediaboard
+          rm -f content/01-red.png content/02-green.png content/03-blue.png playlist.js
+          docker run --rm -v "$GITHUB_WORKSPACE:/w" -w /w debian:bullseye bash -c '
+            apt-get update -qq >/dev/null && apt-get install -y -qq imagemagick >/dev/null 2>&1
+            convert -size 1280x720 "xc:#103050" -pointsize 60 -fill white -gravity center \
+              -annotate 0 "MediaBoard Ready" /w/mediaboard/content/00-welcome.png
+          '
+          cd "$GITHUB_WORKSPACE"
+          tar czf mediaboard-kylin-arm64.tar.gz mediaboard
+          ls -lh mediaboard-kylin-arm64.tar.gz
+          tar tzf mediaboard-kylin-arm64.tar.gz | head -20
+
+      - name: Upload artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mediaboard-kylin-arm64
+          path: mediaboard-kylin-arm64.tar.gz
