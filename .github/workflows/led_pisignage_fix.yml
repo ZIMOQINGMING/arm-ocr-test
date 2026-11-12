@@ -1,0 +1,58 @@
+name: LED-pisignage-fix
+on:
+  push:
+    paths:
+      - ".github/workflows/led_pisignage_fix.yml"
+  workflow_dispatch:
+jobs:
+  pisignage:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 40
+    steps:
+      - name: Install prereqs
+        run: |
+          sudo apt-get update -qq
+          (sudo apt-get install -y -qq unzip wget chromium 2>&1 | tail -3) || (sudo apt-get install -y -qq unzip wget 2>&1 | tail -3)
+          which chromium chromium-browser || true
+      - name: Download Player2 into HOME (official procedure)
+        run: |
+          cd $HOME
+          wget -q https://pisignage.com/releases/pi-image-p2-v20.zip
+          unzip -o -q pi-image-p2-v20.zip
+          ls player2 | head -10
+          cp player2/build-scripts/install-pisignage.sh .
+          chmod +x install-pisignage.sh
+          chmod +x -R player2/build-scripts player2/shell-scripts || true
+      - name: Run official install script as user
+        run: |
+          cd $HOME
+          (./install-pisignage.sh 2>&1 || true) | tee /home/runner/install_log.txt
+          echo "=== tail ==="
+          tail -50 /home/runner/install_log.txt
+      - name: Fingerprint check
+        run: |
+          {
+            echo "== node version"
+            node -v 2>&1 || true
+            echo "== chromium version"
+            chromium --version 2>&1 || chromium-browser --version 2>&1 || true
+            echo "== pm2 process list"
+            pm2 list 2>&1 || true
+            echo "== player2 app package"
+            node -e "const p=require('/home/runner/player2/package.json');console.log(p.name,p.version)" 2>&1 || true
+            echo "== installed dirs"
+            ls -d /home/runner/pisignage-data /home/runner/media /home/runner/logs /home/runner/start.sh 2>&1 || true
+            echo "== systemd units"
+            systemctl list-units --all 2>/dev/null | grep -iE "pisignage|player|watchdog" || true
+            echo "== yt-dlp / vlc"
+            /usr/local/bin/yt-dlp --version 2>&1 || true
+            which vlc mpv evince 2>&1 || true
+          } | tee /home/runner/verify_log.txt
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pisignage-logs2
+          path: |
+            /home/runner/install_log.txt
+            /home/runner/verify_log.txt
