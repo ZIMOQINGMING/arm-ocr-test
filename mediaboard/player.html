@@ -6,18 +6,24 @@
 <title>MediaBoard</title>
 <style>
 html,body{margin:0;padding:0;width:100%;height:100%;background:#000;overflow:hidden;cursor:none}
+#bg{position:absolute;top:0;left:0;width:100%;height:100%;background-position:center;background-size:cover;background-repeat:no-repeat;display:none}
 #stage{position:absolute;top:0;left:0;width:100%;height:100%}
 #stage img,#stage video{position:absolute;top:0;left:0;width:100%;height:100%;object-fit:contain;background:#000}
-#msg{position:absolute;top:40%;left:0;width:100%;text-align:center;color:#888;font:4vh sans-serif;z-index:5}
-#ticker{position:fixed;left:0;right:0;bottom:0;height:9vh;display:none;align-items:center;overflow:hidden;white-space:nowrap;z-index:10}
-#ticker-inner{display:inline-block;white-space:nowrap;will-change:transform;animation-name:mb-scroll;animation-timing-function:linear;animation-iteration-count:infinite;animation-duration:40s;transform:translateX(100vw)}
-@keyframes mb-scroll{from{transform:translateX(100vw)}to{transform:translateX(-100%)}}
+#msg{position:absolute;top:40%;left:0;width:100%;text-align:center;color:#888;font:4vh 'Noto Sans CJK SC',sans-serif;z-index:5}
+#ticker{position:fixed;left:0;right:0;bottom:0;display:none;overflow:hidden;z-index:10}
+#notify{position:fixed;top:0;left:0;right:0;display:none;overflow:hidden;z-index:50}
+#screenoff{position:fixed;top:0;left:0;width:100%;height:100%;background:#000;display:none;z-index:99}
+#mb-state{display:none}
 </style>
 </head>
 <body>
+<div id="bg"></div>
 <div id="stage"></div>
 <div id="msg"></div>
+<div id="notify"><span id="notify-inner"></span></div>
 <div id="ticker"><span id="ticker-inner"></span></div>
+<div id="screenoff"></div>
+<span id="mb-state">init</span>
 <script src="playlist.js"></script>
 <script src="player.js"></script>
 </body>
