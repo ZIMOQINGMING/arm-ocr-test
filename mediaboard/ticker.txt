@@ -1,1 +1,1 @@
-欢迎使用 MediaBoard 离线播放板。编辑本文件即可修改滚动字幕内容。
+欢迎使用 MediaBoard 多媒体看板　●　　编辑 ticker.txt 即可修改这段滚动字幕
