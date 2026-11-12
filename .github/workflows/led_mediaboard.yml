@@ -61,13 +61,19 @@ jobs:
           assert len(b1) > 5000 and len(b2) > 5000, "screenshot too small (blank?)"
           assert b1 != b2, "FAIL: two screenshots identical - slideshow not advancing"
           print("PASS: slideshow advances, screenshots differ")
-          # 3) 字幕条渲染：底部 65px 裁切，标准差>0 说明有内容
-          out = subprocess.run(["convert", "/w/shot1.png", "-crop", "1280x65+0+655", "+repage",
-                                "-format", "%[standard-deviation]", "info:"],
-                               capture_output=True, text=True).stdout
-          print("ticker strip stddev:", out)
-          assert float(out) > 1.0, "FAIL: ticker bar blank"
-          print("PASS: ticker rendered")
+          # 3) 字幕条渲染：底部条应比整屏平均明显变暗（半透明黑条压暗底色）
+          import re
+          strip = subprocess.run(["convert", "/w/shot1.png", "-crop", "1280x65+0+655", "+repage",
+                                  "-resize", "1x1", "txt:-"],
+                                 capture_output=True, text=True).stdout
+          def bright(s):
+              m = re.search(r"srgb\(([\d.]+)%,([\d.]+)%,([\d.]+)%\)", s)
+              return sum(float(x) for x in m.groups())
+          b_strip = bright(strip)
+          b_full = bright(a1)
+          print("strip brightness=%.2f full=%.2f" % (b_strip, b_full))
+          assert b_strip < b_full * 0.6, "FAIL: ticker bar not rendered"
+          print("PASS: ticker bar rendered (darkened strip present)")
           PYEOF
             echo "ALL FUNCTIONAL TESTS PASSED"
           '
