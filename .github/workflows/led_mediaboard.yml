@@ -81,15 +81,22 @@ jobs:
                                     "info:"], capture_output=True, text=True).stdout
               v = [float(t) for t in out.split()]
               return v[0], v[1], v[2], v[3]
+          def peak(f, x, y, w, h):
+              out = subprocess.run(["convert", f, "-crop", "%dx%d+%d+%d" % (w, h, x, y), "+repage",
+                                    "-format", "%[fx:maxima.r*255] %[fx:maxima.g*255] %[fx:maxima.b*255]",
+                                    "info:"], capture_output=True, text=True).stdout
+              v = [float(t) for t in out.split()]
+              return v[0], v[1], v[2]
           S1, S2, S3 = "/w/shot_1500.png", "/w/shot_10000.png", "/w/shot_13000.png"
           # t=1.5s 页1: 左区红
           r, g, b, sd = stats(S1, 300, 300, 100, 50)
           print("t1.5 left:", r, g, b, sd)
           assert r > 80 and g < 15 and b < 15, "FAIL: left not red"
-          # 文本窗: 绿字(#00ff00) 亮于底(#202020)
-          r, g, b, sd = stats(S1, 700, 40, 500, 180)
-          print("t1.5 textzone:", r, g, b, sd)
-          assert g - r > 8 and sd > 2, "FAIL: text zone not rendered"
+          # 文本窗: 绿字(#00ff00) 必有绿色峰值（避开顶部通知横幅 0..72px）
+          r, g, b, sd = stats(S1, 700, 80, 500, 160)
+          pr, pg, pb = peak(S1, 700, 80, 500, 160)
+          print("t1.5 textzone mean:", r, g, b, sd, "peak:", pr, pg, pb)
+          assert pg > 120 and sd > 2, "FAIL: text zone not rendered"
           # 表盘时钟区
           r, g, b, sd = stats(S1, 700, 300, 200, 160)
           print("t1.5 dialclock:", r, g, b, sd)
@@ -110,10 +117,10 @@ jobs:
           r, g, b, sd = stats(S2, 300, 400, 100, 50)
           print("t10 page2:", r, g, b, sd)
           assert b > 80 and r < 15, "FAIL: page2 not blue (page switch broken?)"
-          # 页2 文本区2 scroll-up 洋红字
-          r, g, b, sd = stats(S2, 50, 20, 540, 170)
-          print("t10 textzone2:", r, g, b, sd)
-          assert sd > 2, "FAIL: page2 scroll-up text zone blank"
+          # 页2 文本区2 scroll-up 洋红字(#ff00ff) 峰值
+          pr, pg, pb = peak(S2, 50, 90, 540, 150)
+          print("t10 textzone2 peak:", pr, pg, pb)
+          assert pr > 120 and pb > 120, "FAIL: page2 scroll-up text zone blank"
           # t=13s 页2 第2张: 紫
           r, g, b, sd = stats(S3, 300, 400, 100, 50)
           print("t13 page2:", r, g, b, sd)
