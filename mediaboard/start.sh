@@ -126,7 +126,11 @@ command -v xset >/dev/null 2>&1 && { xset s off 2>/dev/null; xset -dpms 2>/dev/n
 echo "[MediaBoard] 启动 $CHROME 全屏播放 (Ctrl+C 停止)"
 while true; do
   "$CHROME" --kiosk --noerrdialogs --disable-infobars \
+    --no-first-run --no-default-browser-check \
+    --disable-features=Translate,TranslateUI,TranslateNewUX \
     --disable-session-crashed-bubble --disable-restore-session-state \
+    --disable-background-networking --disable-component-update \
+    --force-device-scale-factor=1 --lang=zh-CN \
     --autoplay-policy=no-user-gesture-required \
     "file://$DIR/player.html" >/dev/null 2>&1
   sleep 3
