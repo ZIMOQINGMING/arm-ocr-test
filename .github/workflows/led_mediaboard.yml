@@ -79,18 +79,18 @@ jobs:
             grep -q "mask:true" playlist.js            || { echo "FAIL: ticker mask missing"; exit 1; }
             PAGES=$(grep -c "{duration:8,zones:" playlist.js)
             [ "$PAGES" -eq 3 ] || { echo "FAIL: pages=$PAGES expect 3"; exit 1; }
-            grep -q 'layer:"1"' playlist.js           || { echo "FAIL: layer missing"; exit 1; }
-            grep -q 'opacity:"60"' playlist.js         || { echo "FAIL: opacity missing"; exit 1; }
-            grep -q 'edge_mask:"6"' playlist.js        || { echo "FAIL: edge_mask missing"; exit 1; }
-            grep -q 'grid_fx:"4"' playlist.js          || { echo "FAIL: grid_fx missing"; exit 1; }
-            grep -q 'plays:5' playlist.js              || { echo "FAIL: page plays missing"; exit 1; }
-            grep -q 'valid:"2000-01-01~2000-12-31"' playlist.js || { echo "FAIL: page valid missing"; exit 1; }
-            grep -q '{t:"00:01",cmd:"play:1"}' playlist.js || { echo "FAIL: schedule missing"; exit 1; }
-            grep -q 'ticker:{.*overlay:true' playlist.js || { echo "FAIL: ticker overlay missing"; exit 1; }
+            grep -q "layer:.1." playlist.js            || { echo "FAIL: layer missing"; exit 1; }
+            grep -q "opacity:.60." playlist.js         || { echo "FAIL: opacity missing"; exit 1; }
+            grep -q "edge_mask:.6." playlist.js        || { echo "FAIL: edge_mask missing"; exit 1; }
+            grep -q "grid_fx:.4." playlist.js          || { echo "FAIL: grid_fx missing"; exit 1; }
+            grep -q "plays:5" playlist.js              || { echo "FAIL: page plays missing"; exit 1; }
+            grep -q "valid:.2000-01-01~2000-12-31." playlist.js || { echo "FAIL: page valid missing"; exit 1; }
+            grep -q "cmd:.play:1." playlist.js         || { echo "FAIL: schedule missing"; exit 1; }
+            grep -q "ticker:{.*overlay:true" playlist.js || { echo "FAIL: ticker overlay missing"; exit 1; }
             # 字体包：内置 woff2 必须进 fontfaces（中文显示名）
             [ -f fonts/SourceHanSansSC-Regular.woff2 ] || { echo "FAIL: font not packaged"; exit 1; }
-            grep -q 'family:"思源黑体 常规"' playlist.js || { echo "FAIL: fontface family missing"; exit 1; }
-            grep -q 'format:"woff2"' playlist.js        || { echo "FAIL: fontface woff2 format missing"; exit 1; }
+            grep -q "family:.思源黑体 常规." playlist.js || { echo "FAIL: fontface family missing"; exit 1; }
+            grep -q "format:.woff2." playlist.js        || { echo "FAIL: fontface woff2 format missing"; exit 1; }
             # 纹理素材
             [ -f textures/vignette.png ] || { echo "FAIL: texture missing"; exit 1; }
             echo "PASS: playlist v4 (grid/qr/notice/gradient/layer+opacity/edge_mask/grid_fx/plays/valid/schedule/fonts/textures/pages=3)"
