@@ -75,7 +75,7 @@ jobs:
               --window-size=1280,720 --window-position=0,0 \
               --no-first-run --no-default-browser-check --disable-infobars \
               --autoplay-policy=no-user-gesture-required \
-              "file:///w/mediaboard/player.html" >/dev/null 2>&1 &
+              --app="file:///w/mediaboard/player.html" >/dev/null 2>&1 &
             CH_PID=$!
             sleep 2;   import -window root /w/shot_1500.png
             sleep 8.6; import -window root /w/shot_10000.png
