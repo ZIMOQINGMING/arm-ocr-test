@@ -60,8 +60,15 @@ jobs:
               out = subprocess.run(["convert", f, "-crop", "%dx%d+%d+%d" % (w, h, x, y),
                                     "+repage", "-resize", "1x1", "txt:-"],
                                    capture_output=True, text=True).stdout
-              m = re.search(r"srgb\(([\d.]+)%,([\d.]+)%,([\d.]+)%\)", out)
-              return tuple(float(v) for v in m.groups())
+              m = re.search(r"srgb\(([^)]+)\)", out)
+              vals = []
+              for comp in m.group(1).split(","):
+                  comp = comp.strip()
+                  if comp.endswith("%"):
+                      vals.append(float(comp[:-1]))
+                  else:
+                      vals.append(float(comp) / 255.0 * 100.0)
+              return tuple(vals)
           # t=1.5s: 左区第1张(红) 右区第1张(蓝)
           l1 = region("/w/shot1.png", 300, 260, 128, 72)
           r1 = region("/w/shot1.png", 1000, 260, 128, 72)
