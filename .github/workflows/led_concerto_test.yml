@@ -1,0 +1,30 @@
+name: LED-concerto-test
+on:
+  push:
+    paths:
+      - ".github/workflows/led_concerto_test.yml"
+  workflow_dispatch:
+jobs:
+  concerto:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 25
+    steps:
+      - name: Pull arm64 image and smoke
+        run: |
+          uname -m
+          docker pull ghcr.io/concerto/concerto:latest
+          docker image inspect ghcr.io/concerto/concerto:latest --format 'arch={{.Architecture}} size={{.Size}}'
+          echo "== rails secret smoke"
+          docker run --rm ghcr.io/concerto/concerto:latest bin/rails secret | head -c 64
+          echo
+      - name: Save offline bundle
+        if: always()
+        run: |
+          docker save ghcr.io/concerto/concerto:latest | gzip -1 > /home/runner/concerto-arm64-image.tar.gz
+          ls -lh /home/runner/concerto-arm64-image.tar.gz
+      - name: Upload
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: concerto-arm64-image
+          path: /home/runner/concerto-arm64-image.tar.gz
