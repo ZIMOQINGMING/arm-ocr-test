@@ -141,12 +141,16 @@ jobs:
 
       - name: Package clean bundle
         run: |
-          rm -rf mediaboard
+          # 容器内 root 建的文件宿主删不掉，必须容器内清理
+          docker run --rm -v "$GITHUB_WORKSPACE:/w" -w /w debian:bookworm bash -c '
+            rm -rf /w/mediaboard
+            apt-get update -qq >/dev/null && apt-get install -y -qq imagemagick >/dev/null 2>&1
+          '
           cp -r /tmp/mb_pristine mediaboard
           docker run --rm -v "$GITHUB_WORKSPACE:/w" -w /w debian:bookworm bash -c '
-            apt-get update -qq >/dev/null && apt-get install -y -qq imagemagick >/dev/null 2>&1
             convert -size 1280x720 "xc:#103050" -pointsize 60 -fill white -gravity center \
               -annotate 0 "MediaBoard v2 Ready" /w/mediaboard/content/00-welcome.png
+            chown -R $(stat -c %u:%g /w) /w/mediaboard
           '
           cd "$GITHUB_WORKSPACE"
           tar czf mediaboard-kylin-arm64.tar.gz mediaboard
