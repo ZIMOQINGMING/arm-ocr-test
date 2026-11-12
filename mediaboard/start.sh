@@ -174,7 +174,7 @@ emit_zone() { # 参数: name zx zy zw zh zdur ztype
       printf '{name:"%s",x:%s,y:%s,w:%s,h:%s,duration:%s,slides:[' \
         "$nesc" "$zx" "$zy" "$zw" "$zh" "$zdur"
       emit_media "content/$name" 3
-      printf ']'
+      printf ']}'
       ;;
   esac
 }
@@ -255,7 +255,21 @@ EOF
       case "$zx$zy$zw$zh" in *[!0-9.]*) echo "[布局] 跳过非法行: $line"; continue;; esac
       zdur="${zdur:-$DURATION}"
       case "$zdur" in *[!0-9.]*) zdur="$DURATION";; esac
-      [ -z "$ztype" ] && { if [ "$name" = "时钟" ]; then ztype="时钟"; else ztype="文件"; fi; }
+      # 窗口类型: 第6字段显式指定优先; 否则按名称关键词自动推断; 兜底=文件
+      case "$ztype" in
+        文本|text|多行文本|单行文本) ztype="文本";;
+        时钟|clock) ztype="时钟";;
+        计时|timer|倒计时|countdown) ztype="计时";;
+        文件|file|video|"") ztype="${ztype:-}"
+          if [ -z "$ztype" ]; then
+            case "$name" in
+              *时钟*) ztype="时钟";;
+              *计时*|*倒计时*) ztype="计时";;
+              *文本*|*文字*|*通知*) ztype="文本";;
+              *) ztype="文件";;
+            esac
+          fi;;
+      esac
       frag="$(emit_zone "$name" "$zx" "$zy" "$zw" "$zh" "$zdur" "$ztype")"
       PAGE_ZONES="$PAGE_ZONES$frag,
 "
