@@ -1,0 +1,79 @@
+name: MediaBoard-demo-shots
+on:
+  push:
+    paths:
+      - ".github/workflows/led_mediaboard_demo.yml"
+  workflow_dispatch:
+jobs:
+  demo:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run player with realistic demo content, capture screenshots
+        run: |
+          docker run --rm -v "$GITHUB_WORKSPACE:/w" -w /w/mediaboard debian:bookworm bash -c '
+            set -e
+            export DEBIAN_FRONTEND=noninteractive
+            apt-get update -qq >/dev/null
+            apt-get install -y -qq chromium imagemagick fonts-noto-cjk >/dev/null 2>&1
+            chromium --version
+
+            # ===== 真实感演示内容 =====
+            mkdir -p content/主画面 content/侧栏
+
+            # 主画面: 三张 PPT 风格幻灯片 (企业蓝渐变背景 + 标题/正文)
+            convert -size 1280x720 gradient:"#0a3d7a"-"#1e6fd9" \
+              -font Noto-Sans-CJK-SC -pointsize 64 -fill white -gravity north -annotate +0+70 "季度工作汇报" \
+              -pointsize 36 -fill "#cfe4ff" -gravity northwest -annotate +90+220 "· 一、项目进展顺利" \
+              -annotate +90+320 "· 二、质量指标达标" -annotate +90+420 "· 三、下季度计划" \
+              content/主画面/01-封面.png
+            convert -size 1280x720 gradient:"#7a1e5c"-"#d91e6f" \
+              -font Noto-Sans-CJK-SC -pointsize 58 -fill white -gravity north -annotate +0+70 "通知公告" \
+              -pointsize 34 -fill "#ffd9ec" -gravity northwest -annotate +90+230 "本周五下午 15:00" \
+              -annotate +90+320 "三楼会议室 全员参加" -annotate +90+410 "请提前安排好工作" \
+              content/主画面/02-通知.png
+            convert -size 1280x720 gradient:"#0d6b4f"-"#2ecc8f" \
+              -font Noto-Sans-CJK-SC -pointsize 58 -fill white -gravity north -annotate +0+70 "安全生产宣传" \
+              -pointsize 34 -fill "#d0ffe9" -gravity northwest -annotate +90+230 "安全第一 预防为主" \
+              -annotate +90+320 "规范操作 谨慎作业" -annotate +90+410 "人人讲安全 事事为安全" \
+              content/主画面/03-宣传.png
+
+            # 侧栏: 三张竖版图片
+            convert -size 640x1440 gradient:"#f5b133"-"#e08214" \
+              -font Noto-Sans-CJK-SC -pointsize 72 -fill "#5c3a00" -gravity center -annotate 0 "图\n片\n栏" \
+              content/侧栏/01.png
+            convert -size 640x1440 gradient:"#13b3c9"-"#0b7f97" \
+              -font Noto-Sans-CJK-SC -pointsize 72 -fill white -gravity center -annotate 0 "产\n品\n图" \
+              content/侧栏/02.png
+            convert -size 640x1440 gradient:"#8e6fd9"-"#5a3fa8" \
+              -font Noto-Sans-CJK-SC -pointsize 72 -fill white -gravity center -annotate 0 "风\n景\n图" \
+              content/侧栏/03.png
+
+            # 布局: 左70%主画面(8s/张) 右上30%侧栏(5s/张) 右下时钟 底部字幕
+            printf "主画面=0,0,70,90,8\n侧栏=70,0,30,60,5\n时钟=70,60,30,30\n" > layout.txt
+            echo "麒麟V10 播放板正在运行 · 滚动字幕演示 · 支持图片/PPT/视频轮播 + 分区组合播放" > ticker.txt
+            printf "DURATION=8\nSOUND=no\nRELOAD_MINUTES=0\nTICKER_SPEED=70\nTICKER_COLOR=#ffffff\nTICKER_BGCOLOR=#1a3a6b\n" > settings.txt
+
+            # 生成 playlist 并启动渲染
+            MEDIABOARD_TEST=1 bash start.sh
+            ls playlist.js
+
+            # 截图1: 第 2 秒 (主画面=幻灯片1, 侧栏=图1)
+            chromium --headless --no-sandbox --disable-gpu --window-size=1280,720 \
+              --virtual-time-budget=2000 --screenshot=/w/demo_shot_t2s.png "file:///w/mediaboard/player.html" 2>/dev/null
+            # 截图2: 第 20 秒 (主画面=幻灯片3, 侧栏=图3)
+            chromium --headless --no-sandbox --disable-gpu --window-size=1280,720 \
+              --virtual-time-budget=20000 --screenshot=/w/demo_shot_t20s.png "file:///w/mediaboard/player.html" 2>/dev/null
+            ls -l /w/demo_shot_t2s.png /w/demo_shot_t20s.png
+          '
+
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mediaboard-demo-shots
+          path: |
+            demo_shot_t2s.png
+            demo_shot_t20s.png
