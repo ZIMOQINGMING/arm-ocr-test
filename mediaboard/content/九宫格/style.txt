@@ -1,0 +1,3 @@
+GROUP=grid
+GROUPCOLS=2
+CARD=yes

@@ -1,0 +1,6 @@
+TITLE=今日通知
+COLOR=#eaf1ff
+BGCOLOR=#13203c
+SIZE=3
+ICON=horn
+PADDING=1

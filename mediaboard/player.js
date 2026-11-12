@@ -610,6 +610,8 @@
     var pad = num(z.padding, 0);
     var fcss = fontCss(n0, 3.2);
     var icon = z.icon || n0.icon;
+    // 分区底色挂在 el 上：内容超出切到自动上滚时会清空内层盒子，底色不能跟着丢
+    if (!z.gradient) { el.style.background = n0.bgcolor || "rgba(0,0,0,0.55)"; }
     function render(list) {
       if (!list.length) { el.appendChild(dimLabel("公告窗[" + z.name + "] 内容为空")); return; }
       var box = document.createElement("div");

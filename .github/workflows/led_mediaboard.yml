@@ -58,9 +58,9 @@ jobs:
             printf "MODE=dial\nCOLOR=#ffffff\nBGCOLOR=#101820\n" > content/时钟/style.txt
             printf "GROUP=grid\nGROUPCOLS=2\nCARD=yes\n" > content/九宫格/style.txt
             printf "{\"items\":[\"值班长:张三\",\"值班员:李四\"]}" > data/值班.json
-            printf "主画面=g:1,1,6,6,4\n九宫格=g:1,7,6,6,4\n渐变卡=g:7,1,6,2,,文本\n公告=g:7,7,6,2,,公告\n二维码=g:9,1,3,3,,二维码\n时钟=g:9,4,3,3,,时钟\n--- 8\n页2主=g:1,1,12,12,4\n" > layout.txt
+            printf "主画面=g:1,1,6,6,4\n九宫格=g:1,7,6,6,4\n渐变卡=g:7,1,3,6,,文本\n公告=g:7,7,3,6,,公告\n二维码=g:10,1,2,4,,二维码\n时钟=g:10,5,2,4,,时钟\n--- 8\n页2主=g:1,1,12,12,4\n" > layout.txt
             echo "麒麟看板 v3 字幕滚动验证 ABC123" > ticker.txt
-            printf "DURATION=4\nSOUND=no\nRELOAD_MINUTES=0\nFILL=contain\nTRANSITION=fade\nTRANSITION_TIME=0.5\nPAGE_DURATION=8\nPERF=high\nKENBURNS=no\nTWINKLE=no\nTICKER_EFFECT=scroll-left\nTICKER_SPEED=90\nTICKER_COLOR=#ffff00\nTICKER_BGCOLOR=#ff00ff\nTICKER_SIZE=5.5\nTICKER_HEIGHT=9\nTICKER_MASK=yes\nNOTIFY_MINUTES=5\n" > settings.txt
+            printf "DURATION=4\nSOUND=no\nRELOAD_MINUTES=0\nFILL=contain\nTRANSITION=fade\nTRANSITION_TIME=0.5\nPAGE_DURATION=8\nPERF=high\nKENBURNS=no\nTWINKLE=no\nTICKER_EFFECT=scroll-left\nTICKER_SPEED=90\nTICKER_COLOR=#ffff00\nTICKER_BGCOLOR=#ff00ff\nTICKER_SIZE=5.5\nTICKER_HEIGHT=7\nTICKER_MASK=yes\nNOTIFY_MINUTES=5\n" > settings.txt
             # ---- 1) playlist 结构断言 ----
             MEDIABOARD_TEST=1 bash start.sh
             grep -q "group:\"grid\"" playlist.js       || { echo "FAIL: grid group missing"; exit 1; }
@@ -152,23 +152,23 @@ jobs:
           assert got["bl"][0] > 120 and got["bl"][2] > 150 and got["bl"][1] < 90, "FAIL: grid bl not purple"
           assert got["br"][0] > 200 and got["br"][1] > 100 and got["br"][2] < 80, "FAIL: grid br not orange"
           # 渐变卡：两端色差
-          a = px(S1, 20, 375); c = px(S1, 600, 470)
+          a = px(S1, 20, 375); c = px(S1, 600, 530)
           print("gradient ends:", a, c)
           assert abs(a[2] - c[2]) > 10 or abs(a[0] - c[0]) > 8, "FAIL: gradient not visible"
           # 渐变卡内白字峰值
-          v = st(S1, 30, 370, 560, 100); print("gradtext peak:", v[4:])
+          v = st(S1, 30, 380, 560, 140); print("gradtext peak:", v[4:])
           assert v[4] > 200 and v[3] > 3, "FAIL: gradient card text missing"
           # 公告列表：白字存在
-          v = st(S1, 660, 370, 600, 100); print("notice peak:", v[4:], "sd", v[3])
+          v = st(S1, 660, 380, 600, 140); print("notice peak:", v[4:], "sd", v[3])
           assert v[4] > 200 and v[3] > 4, "FAIL: notice list blank"
           # 二维码：黑白模块（均值中间、方差大）
-          v = st(S1, 110, 490, 220, 160); print("qr mean/sd:", v[0], v[1], v[2], v[3])
+          v = st(S1, 100, 548, 240, 104); print("qr mean/sd:", v[0], v[1], v[2], v[3])
           assert 40 < v[0] < 230 and v[3] > 25, "FAIL: QR not rendered"
           # 表盘：白线峰值
-          v = st(S1, 660, 490, 240, 140); print("dial peak:", v[4:], "sd", v[3])
+          v = st(S1, 450, 548, 260, 104); print("dial peak:", v[4:], "sd", v[3])
           assert v[4] > 150 and v[3] > 3, "FAIL: dial clock blank"
           # 字幕条品红底
-          r, g, b = px(S1, 200, 690); print("ticker:", r, g, b)
+          r, g, b = px(S1, 200, 700); print("ticker:", r, g, b)
           assert r > 90 and b > 90 and g < 70, "FAIL: ticker bar not magenta"
           # 页2: 全屏蓝（节目页切换）
           r, g, b = px(S2, 320, 320); print("page2:", r, g, b)

@@ -1,0 +1,11 @@
+SIZE=3.4
+COLOR=#ffffff
+GRADIENT=#0b1e3d,#1a3a6b
+CARD=yes
+RADIUS=1
+SHADOW=yes
+STROKE=yes
+PADDING=1
+ICON=star
+DECOR=line
+EFFECT=static

@@ -1,0 +1,3 @@
+MODE=dial
+COLOR=#ffffff
+BGCOLOR=#101820
