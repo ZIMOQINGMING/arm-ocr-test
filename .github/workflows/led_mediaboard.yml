@@ -1,4 +1,4 @@
-name: MediaBoard-build-test
+name: MediaBoard-v2-build-test
 on:
   push:
     paths:
@@ -13,6 +13,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Backup pristine mediaboard
+        run: rm -rf /tmp/mb_pristine && cp -r mediaboard /tmp/mb_pristine
+
       - name: Syntax check scripts
         run: |
           bash -n mediaboard/start.sh
@@ -20,110 +23,126 @@ jobs:
           bash -n mediaboard/stop.sh
           echo "syntax OK"
 
-      - name: Functional test in Debian bookworm (real chromium, arm64)
+      - name: Functional test v2 in Debian bookworm (real chromium, arm64)
         run: |
           docker run --rm -v "$GITHUB_WORKSPACE:/w" -w /w/mediaboard debian:bookworm bash -c '
             set -e
             export DEBIAN_FRONTEND=noninteractive
             apt-get update -qq >/dev/null
-            apt-get install -y -qq chromium imagemagick python3 >/dev/null 2>&1
+            apt-get install -y -qq chromium imagemagick python3 fonts-dejavu-core fonts-noto-cjk >/dev/null 2>&1
             chromium --version
-            # 造分区测试图：左区红->绿，右区蓝->黄->紫
-            mkdir -p content/左区 content/右区
+            # ---- 造测试素材 ----
+            mkdir -p content/左区 content/右区 content/文本区 content/文本区2 content/时钟区 content/计时区 fonts
             convert -size 1280x720 xc:red     -pointsize 90 -fill white -gravity center -annotate 0 "L1-RED"    content/左区/01-red.png
             convert -size 1280x720 xc:green   -pointsize 90 -fill white -gravity center -annotate 0 "L2-GREEN"  content/左区/02-green.png
             convert -size 1280x720 xc:blue    -pointsize 90 -fill white -gravity center -annotate 0 "R1-BLUE"   content/右区/01-blue.png
-            convert -size 1280x720 xc:yellow  -pointsize 90 -fill black -gravity center -annotate 0 "R2-YELLOW" content/右区/02-yellow.png
-            convert -size 1280x720 xc:purple  -pointsize 90 -fill white -gravity center -annotate 0 "R3-PURPLE" content/右区/03-purple.png
-            printf "左区=0,0,70,88,4\n右区=70,0,30,88,6\n时钟=70,76,30,12\n" > layout.txt
-            echo "麒麟播放板分区测试字幕 ABC123" > ticker.txt
-            printf "DURATION=4\nSOUND=no\nRELOAD_MINUTES=0\nTICKER_SPEED=60\nTICKER_COLOR=#ffff00\nTICKER_BGCOLOR=#ff00ff\n" > settings.txt
-            # 1) playlist 生成测试
+            convert -size 1280x720 xc:purple  -pointsize 90 -fill white -gravity center -annotate 0 "R2-PURPLE" content/右区/02-purple.png
+            printf "文本窗测试A123 汉字ABC\n第二行XYZ 789" > content/文本区/text.txt
+            printf "SIZE=7\nCOLOR=#00ff00\nBGCOLOR=#202020\nEFFECT=static\nBOLD=yes\nALIGN=center\n" > content/文本区/style.txt
+            printf "向上滚动测试DEF向上滚动\n第二行GHIJKLMNOP" > content/文本区2/text.txt
+            printf "EFFECT=scroll-up\nSPEED=60\nCOLOR=#ff00ff\nBGCOLOR=#101010\nSIZE=6\n" > content/文本区2/style.txt
+            printf "MODE=dial\nCOLOR=#ffffff\nBGCOLOR=#102030\n" > content/时钟区/style.txt
+            printf "TARGET=2030-01-01 08:00\nTITLE=倒计时\nCOLOR=#ffffff\nBGCOLOR=#301030\n" > content/计时区/style.txt
+            cp /usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf fonts/DemoFont.ttf
+            printf "左区=0,0,50,70,4\n文本区=50,0,50,35\n时钟区=50,35,25,35\n计时区=75,35,25,35\n---\n右区=0,0,100,100,4\n文本区2=0,0,50,30\n" > layout.txt
+            echo "麒麟播放板v2字幕效果测试ABC123" > ticker.txt
+            echo "紧急通知测试NOTICE-XYZ" > notify.txt
+            printf "DURATION=4\nSOUND=no\nRELOAD_MINUTES=0\nFILL=contain\nTRANSITION=cover-l\nTRANSITION_TIME=0.5\nPAGE_DURATION=8\nTICKER_EFFECT=scroll-left\nTICKER_SPEED=90\nTICKER_COLOR=#ffff00\nTICKER_BGCOLOR=#ff00ff\nTICKER_SIZE=5.5\nTICKER_HEIGHT=9\nNOTIFY_MINUTES=5\n" > settings.txt
+            # ---- 1) playlist 生成断言 ----
             MEDIABOARD_TEST=1 bash start.sh
-            grep -q "左区" playlist.js || { echo "FAIL: zone 左区 missing"; exit 1; }
-            grep -q "右区" playlist.js || { echo "FAIL: zone 右区 missing"; exit 1; }
-            grep -q "clock:true" playlist.js || { echo "FAIL: clock zone missing"; exit 1; }
-            ZL=$(grep -o "content/左区/[^\"]*" playlist.js | wc -l)
-            ZR=$(grep -o "content/右区/[^\"]*" playlist.js | wc -l)
-            echo "zone slides: left=$ZL right=$ZR"
-            [ "$ZL" -eq 2 ] && [ "$ZR" -eq 3 ] || { echo "FAIL: zone slide count wrong"; exit 1; }
-            grep -q "麒麟播放板分区测试字幕" playlist.js || { echo "FAIL: ticker text missing"; exit 1; }
-            # 2) 渲染测试：虚拟时间快进验证两个分区各自独立推进
-            chromium --headless --no-sandbox --disable-gpu --window-size=1280,720 \
-              --virtual-time-budget=1500 --screenshot=/w/shot1.png "file:///w/mediaboard/player.html" 2>/dev/null
-            chromium --headless --no-sandbox --disable-gpu --window-size=1280,720 \
-              --virtual-time-budget=13000 --screenshot=/w/shot2.png "file:///w/mediaboard/player.html" 2>/dev/null
-            ls -l /w/shot1.png /w/shot2.png
+            grep -q "text:{content" playlist.js || { echo "FAIL: text zone missing"; exit 1; }
+            grep -q "clock:{mode:" playlist.js || { echo "FAIL: clock style missing"; exit 1; }
+            grep -q "countdown:{" playlist.js || { echo "FAIL: countdown zone missing"; exit 1; }
+            grep -q "fontfaces:\[{family:" playlist.js || { echo "FAIL: fontfaces missing"; exit 1; }
+            grep -q "notify:{text:" playlist.js || { echo "FAIL: notify missing"; exit 1; }
+            grep -q "effect:\"scroll-left\"" playlist.js || { echo "FAIL: ticker effect missing"; exit 1; }
+            PAGES=$(grep -c "{duration:8,zones:" playlist.js)
+            [ "$PAGES" -eq 2 ] || { echo "FAIL: pages=$PAGES expect 2"; exit 1; }
+            echo "PASS: playlist v2 generation (pages=2, text/clock/countdown/fontfaces/notify)"
+            # ---- 2) JS 运行无错误 ----
+            chromium --headless --no-sandbox --disable-gpu --test-type \
+              --allow-file-access-from-files --window-size=1280,720 \
+              --virtual-time-budget=2000 --dump-dom "file:///w/mediaboard/player.html" 2>/dev/null > /tmp/dom.html
+            grep -q "mb-state\">ready<" /tmp/dom.html || { echo "FAIL: mb-state not ready"; grep -o "mb-state\"[^<]*" /tmp/dom.html; exit 1; }
+            echo "PASS: player.js runs without error (mb-state=ready)"
+            # ---- 3) 渲染截图 ----
+            for t in 1500 10000 13000; do
+              chromium --headless --no-sandbox --disable-gpu --test-type \
+                --allow-file-access-from-files --window-size=1280,720 \
+                --virtual-time-budget=$t --screenshot=/w/shot_$t.png "file:///w/mediaboard/player.html" 2>/dev/null
+            done
+            ls -l /w/shot_*.png
+            # ---- 4) 像素级断言 ----
             python3 - <<PYEOF
           import re, subprocess
-          def region(f, x, y, w, h):
-              out = subprocess.run(["convert", f, "-crop", "%dx%d+%d+%d" % (w, h, x, y),
-                                    "+repage", "-resize", "1x1", "txt:-"],
-                                   capture_output=True, text=True).stdout
-              m = re.search(r"srgb\(([^)]+)\)", out)
-              if m:
-                  vals = []
-                  for comp in m.group(1).split(","):
-                      comp = comp.strip()
-                      if comp.endswith("%"):
-                          vals.append(float(comp[:-1]))
-                      else:
-                          vals.append(float(comp) / 255.0 * 100.0)
-                  return tuple(vals)
-              m2 = re.search(r"#([0-9A-Fa-f]{6})", out)
-              if m2:
-                  hx = m2.group(1)
-                  return tuple(int(hx[i:i+2], 16) / 255.0 * 100.0 for i in (0, 2, 4))
-              print("RAW OUTPUT for", f, x, y, w, h, "->", repr(out))
-              raise SystemExit(1)
-          # t=1.5s: 左区第1张(红) 右区第1张(蓝)
-          l1 = region("/w/shot1.png", 300, 260, 128, 72)
-          r1 = region("/w/shot1.png", 1000, 260, 128, 72)
-          print("t=1.5s left:", l1, "right:", r1)
-          assert l1[0] > 80 and l1[1] < 10, "FAIL: left zone not red at t=1.5s"
-          assert r1[2] > 80 and r1[0] < 10, "FAIL: right zone not blue at t=1.5s"
-          # t=13s: 左区第2张(绿: 4s/张 floor(13/4)%2=1) 右区第3张(紫: 6s/张 floor(13/6)=2)
-          l2 = region("/w/shot2.png", 300, 260, 128, 72)
-          r2 = region("/w/shot2.png", 1000, 260, 128, 72)
-          print("t=13s  left:", l2, "right:", r2)
-          assert l2[1] > 40 and l2[1] > l2[0] * 3 and l2[1] > l2[2] * 3, "FAIL: left zone not green at t=13s"
-          assert r2[0] > 30 and r2[2] > 30 and r2[1] < 20, "FAIL: right zone not purple at t=13s"
-          print("PASS: two zones advance independently")
-          # 3) 字幕条(测试用品红底色)
-          strip = region("/w/shot1.png", 200, 665, 300, 40)
-          print("ticker strip:", strip)
-          assert strip[0] > 50 and strip[2] > 50, "FAIL: ticker bar not rendered"
-          print("PASS: ticker bar rendered")
-          # 4) 时钟窗口: 右下角应有非均匀内容(白色数字)
-          out = subprocess.run(["convert", "/w/shot1.png", "-crop", "384x86+896+547", "+repage",
-                                "-format", "%[standard-deviation]", "info:"],
-                               capture_output=True, text=True).stdout
-          print("clock stddev:", out)
-          assert float(out) > 1.0, "FAIL: clock zone blank"
-          print("PASS: clock zone rendered")
-          print("ALL FUNCTIONAL TESTS PASSED")
+          def stats(f, x, y, w, h):
+              out = subprocess.run(["convert", f, "-crop", "%dx%d+%d+%d" % (w, h, x, y), "+repage",
+                                    "-format", "%[fx:mean.r*255] %[fx:mean.g*255] %[fx:mean.b*255] %[standard-deviation]",
+                                    "info:"], capture_output=True, text=True).stdout
+              v = [float(t) for t in out.split()]
+              return v[0], v[1], v[2], v[3]
+          S1, S2, S3 = "/w/shot_1500.png", "/w/shot_10000.png", "/w/shot_13000.png"
+          # t=1.5s 页1: 左区红
+          r, g, b, sd = stats(S1, 300, 300, 100, 50)
+          print("t1.5 left:", r, g, b, sd)
+          assert r > 80 and g < 15 and b < 15, "FAIL: left not red"
+          # 文本窗: 绿字(#00ff00) 亮于底(#202020)
+          r, g, b, sd = stats(S1, 700, 40, 500, 180)
+          print("t1.5 textzone:", r, g, b, sd)
+          assert g - r > 8 and sd > 2, "FAIL: text zone not rendered"
+          # 表盘时钟区
+          r, g, b, sd = stats(S1, 700, 300, 200, 160)
+          print("t1.5 dialclock:", r, g, b, sd)
+          assert sd > 1, "FAIL: dial clock blank"
+          # 倒计时区
+          r, g, b, sd = stats(S1, 1000, 300, 240, 160)
+          print("t1.5 countdown:", r, g, b, sd)
+          assert sd > 1, "FAIL: countdown blank"
+          # 通知横幅(红底 #c00000)
+          r, g, b, sd = stats(S1, 100, 8, 400, 48)
+          print("t1.5 notify:", r, g, b, sd)
+          assert r > 100 and g < 60 and b < 60, "FAIL: notify bar not red"
+          # 字幕条(品红底 #ff00ff)
+          r, g, b, sd = stats(S1, 200, 660, 300, 48)
+          print("t1.5 ticker:", r, g, b, sd)
+          assert r > 90 and b > 90 and g < 70, "FAIL: ticker bar not magenta"
+          # t=10s 页2: 全屏蓝
+          r, g, b, sd = stats(S2, 300, 400, 100, 50)
+          print("t10 page2:", r, g, b, sd)
+          assert b > 80 and r < 15, "FAIL: page2 not blue (page switch broken?)"
+          # 页2 文本区2 scroll-up 洋红字
+          r, g, b, sd = stats(S2, 50, 20, 540, 170)
+          print("t10 textzone2:", r, g, b, sd)
+          assert sd > 2, "FAIL: page2 scroll-up text zone blank"
+          # t=13s 页2 第2张: 紫
+          r, g, b, sd = stats(S3, 300, 400, 100, 50)
+          print("t13 page2:", r, g, b, sd)
+          assert r > 30 and b > 30 and g < 20, "FAIL: page2 slide2 not purple"
+          print("ALL V2 FUNCTIONAL TESTS PASSED")
           PYEOF
           '
 
       - name: Package clean bundle
         run: |
+          rm -rf mediaboard
+          cp -r /tmp/mb_pristine mediaboard
           docker run --rm -v "$GITHUB_WORKSPACE:/w" -w /w debian:bookworm bash -c '
-            rm -rf /w/mediaboard/content/左区 /w/mediaboard/content/右区 \
-                   /w/mediaboard/playlist.js /w/shot1.png /w/shot2.png
             apt-get update -qq >/dev/null && apt-get install -y -qq imagemagick >/dev/null 2>&1
             convert -size 1280x720 "xc:#103050" -pointsize 60 -fill white -gravity center \
-              -annotate 0 "MediaBoard Ready" /w/mediaboard/content/00-welcome.png
+              -annotate 0 "MediaBoard v2 Ready" /w/mediaboard/content/00-welcome.png
           '
-          # 恢复 layout.txt 为注释样例（测试时改成了真实分区）
-          printf '# 分屏布局（可选，仿 LEDvision 节目窗口）\n# 每行一个窗口: 名称=起点X,起点Y,宽,高[,图片停留秒数]\n# 数字都是占屏幕的百分比。素材放进 content/同名目录/ 里。\n# 名称写「时钟」则该窗口显示实时时钟。\n# 示例: 主画面=0,0,70,90 / 侧栏=70,0,30,90,15 / 时钟=85,90,15,10\n# 全部注释掉（默认）= 全屏轮播 content/ 顶层素材。\n' > mediaboard/layout.txt
           cd "$GITHUB_WORKSPACE"
           tar czf mediaboard-kylin-arm64.tar.gz mediaboard
           ls -lh mediaboard-kylin-arm64.tar.gz
-          tar tzf mediaboard-kylin-arm64.tar.gz
+          tar tzf mediaboard-kylin-arm64.tar.gz | head -20
 
       - name: Upload artifact
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: mediaboard-kylin-arm64
-          path: mediaboard-kylin-arm64.tar.gz
+          name: mediaboard-v2-arm64
+          path: |
+            mediaboard-kylin-arm64.tar.gz
+            shot_1500.png
+            shot_10000.png
+            shot_13000.png
