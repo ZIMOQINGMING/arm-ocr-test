@@ -23,13 +23,14 @@ jobs:
           bash -n mediaboard/stop.sh
           echo "syntax OK"
 
-      - name: Functional test v2 in Debian bookworm (real chromium, arm64)
+      - name: Functional test v2 in Debian bookworm (real chromium + Xvfb, arm64)
         run: |
           docker run --rm -v "$GITHUB_WORKSPACE:/w" -w /w/mediaboard debian:bookworm bash -c '
             set -e
             export DEBIAN_FRONTEND=noninteractive
             apt-get update -qq >/dev/null
-            apt-get install -y -qq chromium imagemagick python3 fonts-dejavu-core fonts-noto-cjk >/dev/null 2>&1
+            apt-get install -y -qq chromium imagemagick python3 xvfb x11-utils \
+              fonts-dejavu-core fonts-noto-cjk >/dev/null 2>&1
             chromium --version
             # ---- 造测试素材 ----
             mkdir -p content/左区 content/右区 content/文本区 content/文本区2 content/时钟区 content/计时区 fonts
@@ -59,22 +60,31 @@ jobs:
             PAGES=$(grep -c "{duration:8,zones:" playlist.js)
             [ "$PAGES" -eq 2 ] || { echo "FAIL: pages=$PAGES expect 2"; exit 1; }
             echo "PASS: playlist v2 generation (pages=2, text/clock/countdown/fontfaces/notify)"
-            # ---- 2) JS 运行无错误 ----
+            # ---- 2) JS 运行无错误（2 秒虚拟时间足够初始化） ----
             chromium --headless --no-sandbox --disable-gpu --test-type \
               --allow-file-access-from-files --window-size=1280,720 \
               --virtual-time-budget=2000 --dump-dom "file:///w/mediaboard/player.html" 2>/dev/null > /tmp/dom.html
             grep -q "mb-state\">ready<" /tmp/dom.html || { echo "FAIL: mb-state not ready"; grep -o "mb-state\"[^<]*" /tmp/dom.html; exit 1; }
             echo "PASS: player.js runs without error (mb-state=ready)"
-            # ---- 3) 渲染截图 ----
-            for t in 1500 10000 13000; do
-              chromium --headless --no-sandbox --disable-gpu --test-type \
-                --allow-file-access-from-files --window-size=1280,720 \
-                --virtual-time-budget=$t --screenshot=/w/shot_$t.png "file:///w/mediaboard/player.html" 2>/dev/null
-            done
+            # ---- 3) 真机实时截图（Xvfb + 真实 chromium，不用虚拟时间） ----
+            export DISPLAY=:99
+            Xvfb :99 -screen 0 1280x720x24 >/dev/null 2>&1 &
+            XVFB_PID=$!
+            sleep 2
+            chromium --no-sandbox --test-type --allow-file-access-from-files --disable-gpu \
+              --window-size=1280,720 --window-position=0,0 \
+              --no-first-run --no-default-browser-check --disable-infobars \
+              --autoplay-policy=no-user-gesture-required \
+              "file:///w/mediaboard/player.html" >/dev/null 2>&1 &
+            CH_PID=$!
+            sleep 2;   import -window root /w/shot_1500.png
+            sleep 8.6; import -window root /w/shot_10000.png
+            sleep 3;   import -window root /w/shot_13000.png
+            kill $CH_PID $XVFB_PID 2>/dev/null || true
             ls -l /w/shot_*.png
             # ---- 4) 像素级断言 ----
             python3 - <<PYEOF
-          import re, subprocess
+          import subprocess
           def stats(f, x, y, w, h):
               out = subprocess.run(["convert", f, "-crop", "%dx%d+%d+%d" % (w, h, x, y), "+repage",
                                     "-format", "%[fx:mean.r*255] %[fx:mean.g*255] %[fx:mean.b*255] %[standard-deviation]",
@@ -88,42 +98,42 @@ jobs:
               v = [float(t) for t in out.split()]
               return v[0], v[1], v[2]
           S1, S2, S3 = "/w/shot_1500.png", "/w/shot_10000.png", "/w/shot_13000.png"
-          # t=1.5s 页1: 左区红
+          # t=2s 页1: 左区红
           r, g, b, sd = stats(S1, 300, 300, 100, 50)
-          print("t1.5 left:", r, g, b, sd)
+          print("t2 left:", r, g, b, sd)
           assert r > 80 and g < 15 and b < 15, "FAIL: left not red"
           # 文本窗: 绿字(#00ff00) 必有绿色峰值（避开顶部通知横幅 0..72px）
           r, g, b, sd = stats(S1, 700, 80, 500, 160)
           pr, pg, pb = peak(S1, 700, 80, 500, 160)
-          print("t1.5 textzone mean:", r, g, b, sd, "peak:", pr, pg, pb)
+          print("t2 textzone mean:", r, g, b, sd, "peak:", pr, pg, pb)
           assert pg > 120 and sd > 2, "FAIL: text zone not rendered"
           # 表盘时钟区
           r, g, b, sd = stats(S1, 700, 300, 200, 160)
-          print("t1.5 dialclock:", r, g, b, sd)
+          print("t2 dialclock:", r, g, b, sd)
           assert sd > 1, "FAIL: dial clock blank"
           # 倒计时区
           r, g, b, sd = stats(S1, 1000, 300, 240, 160)
-          print("t1.5 countdown:", r, g, b, sd)
+          print("t2 countdown:", r, g, b, sd)
           assert sd > 1, "FAIL: countdown blank"
           # 通知横幅(红底 #c00000)
           r, g, b, sd = stats(S1, 100, 8, 400, 48)
-          print("t1.5 notify:", r, g, b, sd)
+          print("t2 notify:", r, g, b, sd)
           assert r > 100 and g < 60 and b < 60, "FAIL: notify bar not red"
           # 字幕条(品红底 #ff00ff)
           r, g, b, sd = stats(S1, 200, 660, 300, 48)
-          print("t1.5 ticker:", r, g, b, sd)
+          print("t2 ticker:", r, g, b, sd)
           assert r > 90 and b > 90 and g < 70, "FAIL: ticker bar not magenta"
-          # t=10s 页2: 全屏蓝
+          # t=10.6s 页2: 全屏蓝（节目页切换生效）
           r, g, b, sd = stats(S2, 300, 400, 100, 50)
-          print("t10 page2:", r, g, b, sd)
+          print("t10.6 page2:", r, g, b, sd)
           assert b > 80 and r < 15, "FAIL: page2 not blue (page switch broken?)"
-          # 页2 文本区2 scroll-up 洋红字(#ff00ff) 峰值
-          pr, pg, pb = peak(S2, 50, 90, 540, 150)
-          print("t10 textzone2 peak:", pr, pg, pb)
+          # 页2 文本区2 scroll-up 洋红字(#ff00ff) 峰值（crop 完全落在分区内）
+          pr, pg, pb = peak(S2, 50, 90, 540, 120)
+          print("t10.6 textzone2 peak:", pr, pg, pb)
           assert pr > 120 and pb > 120, "FAIL: page2 scroll-up text zone blank"
-          # t=13s 页2 第2张: 紫
+          # t=13.6s 页2 第2张: 紫
           r, g, b, sd = stats(S3, 300, 400, 100, 50)
-          print("t13 page2:", r, g, b, sd)
+          print("t13.6 page2:", r, g, b, sd)
           assert r > 30 and b > 30 and g < 20, "FAIL: page2 slide2 not purple"
           print("ALL V2 FUNCTIONAL TESTS PASSED")
           PYEOF

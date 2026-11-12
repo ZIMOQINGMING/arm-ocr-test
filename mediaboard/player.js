@@ -426,15 +426,14 @@
   }
   function switchPage() {
     if (pageTimer) { clearTimeout(pageTimer); pageTimer = null; }
-    try {
-      var a = stage.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 350, fill: "forwards" });
-      a.onfinish = function () {
-        renderPage((pageIdx + 1) % pages.length);
-        try { stage.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 350, fill: "forwards" }); } catch (e) {}
-      };
-      return;
-    } catch (e) { /* fallthrough */ }
-    renderPage((pageIdx + 1) % pages.length);
+    // 不依赖动画 onfinish（chromium 版本/虚拟时钟下不稳定），用 transition + 定时器
+    stage.style.transition = "opacity 350ms linear";
+    stage.style.opacity = "0";
+    setTimeout(function () {
+      renderPage((pageIdx + 1) % pages.length);
+      stage.style.opacity = "1";
+      setTimeout(function () { stage.style.transition = ""; }, 420);
+    }, 360);
   }
 
   // ---------- 背景 / 背景音乐 ----------
