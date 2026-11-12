@@ -42,8 +42,9 @@ jobs:
               fonts-dejavu-core fonts-noto-cjk >/dev/null 2>&1
             chromium --version
             # ---- 造测试素材 ----
-            mkdir -p content/主画面 content/九宫格 content/渐变卡 content/公告 content/二维码 content/时钟 data
+            mkdir -p content/主画面 content/九宫格 content/渐变卡 content/公告 content/二维码 content/时钟 content/页2主 data
             convert -size 1280x720 xc:"#0a3c78" -pointsize 90 -fill white -gravity center -annotate 0 "MAIN" content/主画面/01-main.png
+            convert -size 1280x720 xc:blue content/页2主/01-blue.png
             convert -size 640x360 xc:red     content/九宫格/01.png
             convert -size 640x360 xc:"#00c850" content/九宫格/02.png
             convert -size 640x360 xc:"#a000dc" content/九宫格/03.png
