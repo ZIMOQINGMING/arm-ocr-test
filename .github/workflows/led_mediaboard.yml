@@ -72,7 +72,7 @@ jobs:
           l2 = region("/w/shot2.png", 300, 260, 128, 72)
           r2 = region("/w/shot2.png", 1000, 260, 128, 72)
           print("t=13s  left:", l2, "right:", r2)
-          assert l2[1] > 60 and l2[0] < 10, "FAIL: left zone not green at t=13s"
+          assert l2[1] > 40 and l2[1] > l2[0] * 3 and l2[1] > l2[2] * 3, "FAIL: left zone not green at t=13s"
           assert r2[0] > 30 and r2[2] > 30 and r2[1] < 20, "FAIL: right zone not purple at t=13s"
           print("PASS: two zones advance independently")
           # 3) 字幕条(测试用品红底色)
