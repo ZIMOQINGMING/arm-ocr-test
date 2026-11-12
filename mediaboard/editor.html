@@ -532,7 +532,9 @@ function exportFiles() {
   s += kvLine("FILL", st.fill); s += kvLine("TRANSITION", st.transition);
   s += kvLine("TRANSITION_TIME", st.ttime);
   s += kvLine("PERF", st.perf); s += kvLine("KENBURNS", st.kenburns);
-  s += kvLine("TWINKLE", "no"); s += kvLine("PAGE_DURATION", st.pagedur);
+  s += kvLine("TWINKLE", "no");
+  // 最后一页的停留秒只能由 PAGE_DURATION 生效（layout 的 --- N 管的是上一页）
+  s += kvLine("PAGE_DURATION", (S.pages[S.pages.length - 1] || {}).duration || st.pagedur);
   s += kvLine("BGIMAGE", st.bgimage); s += kvLine("BGCOLOR", st.bgcolor);
   s += kvLine("SCREEN_OFF", st.screenoff); s += kvLine("NOTIFY_MINUTES", st.notifymin);
   s += kvLine("TICKER_EFFECT", S.ticker.effect); s += kvLine("TICKER_SPEED", S.ticker.speed);
@@ -543,7 +545,8 @@ function exportFiles() {
   files.push({ name: "settings.txt", content: s });
   var L = "";
   S.pages.forEach(function (pg, pi) {
-    if (pi > 0) { L += "--- " + pg.duration + "\n"; }
+    // 注意: layout 里「--- N」的 N 是【上一页】的停留秒，所以这里取 pi-1 的 duration
+    if (pi > 0) { L += "--- " + S.pages[pi - 1].duration + "\n"; }
     pg.zones.forEach(function (z) {
       L += z.name + "=" + z.x + "," + z.y + "," + z.w + "," + z.h
         + (z.dur !== "" && !isNaN(parseFloat(z.dur)) ? "," + z.dur : ",")
