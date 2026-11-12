@@ -61,17 +61,21 @@ jobs:
                                     "+repage", "-resize", "1x1", "txt:-"],
                                    capture_output=True, text=True).stdout
               m = re.search(r"srgb\(([^)]+)\)", out)
-              if not m:
-                  print("RAW OUTPUT for", f, x, y, w, h, "->", repr(out))
-                  raise SystemExit(1)
-              vals = []
-              for comp in m.group(1).split(","):
-                  comp = comp.strip()
-                  if comp.endswith("%"):
-                      vals.append(float(comp[:-1]))
-                  else:
-                      vals.append(float(comp) / 255.0 * 100.0)
-              return tuple(vals)
+              if m:
+                  vals = []
+                  for comp in m.group(1).split(","):
+                      comp = comp.strip()
+                      if comp.endswith("%"):
+                          vals.append(float(comp[:-1]))
+                      else:
+                          vals.append(float(comp) / 255.0 * 100.0)
+                  return tuple(vals)
+              m2 = re.search(r"#([0-9A-Fa-f]{6})", out)
+              if m2:
+                  hx = m2.group(1)
+                  return tuple(int(hx[i:i+2], 16) / 255.0 * 100.0 for i in (0, 2, 4))
+              print("RAW OUTPUT for", f, x, y, w, h, "->", repr(out))
+              raise SystemExit(1)
           # t=1.5s: 左区第1张(红) 右区第1张(蓝)
           l1 = region("/w/shot1.png", 300, 260, 128, 72)
           r1 = region("/w/shot1.png", 1000, 260, 128, 72)
