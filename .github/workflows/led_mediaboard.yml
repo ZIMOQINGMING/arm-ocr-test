@@ -99,7 +99,7 @@ jobs:
               return v[0], v[1], v[2]
           S1, S2, S3 = "/w/shot_1500.png", "/w/shot_10000.png", "/w/shot_13000.png"
           # t=2s 页1: 左区红
-          r, g, b, sd = stats(S1, 300, 300, 100, 50)
+          r, g, b, sd = stats(S1, 60, 120, 80, 40)
           print("t2 left:", r, g, b, sd)
           assert r > 80 and g < 15 and b < 15, "FAIL: left not red"
           # 文本窗: 绿字(#00ff00) 必有绿色峰值（避开顶部通知横幅 0..72px）
@@ -124,7 +124,7 @@ jobs:
           print("t2 ticker:", r, g, b, sd)
           assert r > 90 and b > 90 and g < 70, "FAIL: ticker bar not magenta"
           # t=10.6s 页2: 全屏蓝（节目页切换生效）
-          r, g, b, sd = stats(S2, 300, 400, 100, 50)
+          r, g, b, sd = stats(S2, 1100, 550, 80, 40)
           print("t10.6 page2:", r, g, b, sd)
           assert b > 80 and r < 15, "FAIL: page2 not blue (page switch broken?)"
           # 页2 文本区2 scroll-up 洋红字(#ff00ff) 峰值（crop 完全落在分区内）
@@ -132,7 +132,7 @@ jobs:
           print("t10.6 textzone2 peak:", pr, pg, pb)
           assert pr > 120 and pb > 120, "FAIL: page2 scroll-up text zone blank"
           # t=13.6s 页2 第2张: 紫
-          r, g, b, sd = stats(S3, 300, 400, 100, 50)
+          r, g, b, sd = stats(S3, 1100, 550, 80, 40)
           print("t13.6 page2:", r, g, b, sd)
           assert r > 30 and b > 30 and g < 20, "FAIL: page2 slide2 not purple"
           print("ALL V2 FUNCTIONAL TESTS PASSED")
