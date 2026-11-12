@@ -126,7 +126,8 @@
         });
         unit = probe.offsetHeight;
         if (unit <= 0) { host.removeChild(probe); return; }
-        dist = host.clientHeight + unit;
+        // fromTop: 内容已在顶部，滚一整份高度即可循环；否则从底边进场
+        dist = opts.fromTop ? unit : host.clientHeight + unit;
         inner.innerHTML = "";
         var n = Math.min(200, Math.ceil(dist / unit) + 1);
         for (i = 0; i < n; i++) {
@@ -138,7 +139,7 @@
           });
         }
         anim = inner.animate(
-          [{ transform: "translateY(" + host.clientHeight + "px)" }, { transform: "translateY(" + (-unit) + "px)" }],
+          [{ transform: "translateY(" + (opts.fromTop ? 0 : host.clientHeight) + "px)" }, { transform: "translateY(" + (-unit) + "px)" }],
           { duration: dist / speed * 1000, iterations: Infinity, easing: "linear" });
       } else {
         var line = opts.lines.join(opts.sep != null ? String(opts.sep) : "　　") + (opts.sep != null ? String(opts.sep) : "　　");
@@ -634,10 +635,14 @@
         hd.appendChild(ht);
         box.appendChild(hd);
       }
-      var needScroll = false;
+      // 列表放进独立滚动区：标题固定钉在顶上，只让列表滚
+      var body = document.createElement("div");
+      body.style.cssText = "position:relative;flex:1 1 auto;min-height:0;overflow:hidden;"
+        + "display:flex;flex-direction:column;justify-content:" + alignvCss(z) + ";";
+      box.appendChild(body);
       list.forEach(function (it, i) {
         var row = document.createElement("div");
-        row.style.cssText = "display:flex;align-items:center;margin:.55vh 0;font:" + fcss + ";";
+        row.style.cssText = "flex:0 0 auto;display:flex;align-items:center;margin:.55vh 0;font:" + fcss + ";";
         if (!n0.title) {
           var idx = document.createElement("span");
           idx.style.cssText = "flex:0 0 auto;margin-right:.8vh;opacity:.75;";
@@ -648,23 +653,21 @@
         tx.style.cssText = "white-space:nowrap;overflow:hidden;text-overflow:ellipsis;";
         tx.textContent = it;
         row.appendChild(tx);
-        box.appendChild(row);
+        body.appendChild(row);
       });
       el.appendChild(box);
-      // 超出分区高度 -> 整块自动上滚
+      // 列表超出滚动区高度 -> 列表从第一行开始往上滚（标题不动，首屏不留空）
       requestAnimationFrame(function () {
-        if (box.scrollHeight > el.clientHeight + 4) {
-          needScroll = true;
-          el.innerHTML = "";
+        if (body.scrollHeight > body.clientHeight + 4) {
+          body.innerHTML = "";
           var inner = document.createElement("div");
-          inner.style.cssText = "position:absolute;left:0;top:0;width:100%;white-space:nowrap;"
+          inner.style.cssText = "position:absolute;left:0;top:0;width:100%;"
             + "color:" + (n0.color || "#ffffff") + ";font:" + fcss + ";" + visCss(z);
-          el.appendChild(inner);
-          makeMarquee(el, inner, {
-            lines: list, speed: num(n0.speed, 30), vertical: true, sep: "　　", font: fcss
+          body.appendChild(inner);
+          makeMarquee(body, inner, {
+            lines: list, speed: num(n0.speed, 30), vertical: true, fromTop: true, font: fcss
           });
         }
-        void needScroll;
       });
     }
     render(items);
