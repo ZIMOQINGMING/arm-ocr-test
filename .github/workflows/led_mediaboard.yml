@@ -63,7 +63,7 @@ jobs:
             printf "{\"items\":[\"值班长:张三\",\"值班员:李四\"]}" > data/值班.json
             printf "主画面=g:1,1,6,6,4\n九宫格=g:1,7,6,6,4\n渐变卡=g:7,1,3,6,,文本\n公告=g:7,7,3,6,,公告\n二维码=g:10,1,2,4,,二维码\n时钟=g:10,5,2,4,,时钟\n--- 8\n页2主=g:1,1,12,12,4\n叠加卡=8,20,84,58,,文本\n--- 8\n@VALID=2000-01-01~2000-12-31\n@PLAYS=5\n页3过期=g:1,1,12,12,4\n" > layout.txt
             printf "# 定时指令（时间取不到当前分钟，只验证解析）\n00:01=play:1\n00:02=pause\n" > schedule.txt
-            echo "麒麟看板 v3 字幕滚动验证 ABC123" > ticker.txt
+            echo "麒麟看板 v4 字幕滚动验证 ABC123" > ticker.txt
             printf "DURATION=4\nSOUND=no\nRELOAD_MINUTES=0\nFILL=contain\nTRANSITION=fade\nTRANSITION_TIME=0.5\nPAGE_DURATION=8\nPERF=high\nKENBURNS=no\nTWINKLE=no\nTICKER_EFFECT=scroll-left\nTICKER_SPEED=90\nTICKER_COLOR=#ffff00\nTICKER_BGCOLOR=#ff00ff\nTICKER_SIZE=5.5\nTICKER_HEIGHT=7\nTICKER_MASK=yes\nNOTIFY_MINUTES=5\n" > settings.txt
             # ---- 1) playlist 结构断言 ----
             MEDIABOARD_TEST=1 bash start.sh

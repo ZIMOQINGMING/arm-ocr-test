@@ -687,6 +687,11 @@
       requestAnimationFrame(function () {
         if (body.scrollHeight > body.clientHeight + 4) {
           body.innerHTML = "";
+          // 滚动区上下渐隐：文字进出不留硬切口（低档位关掉）
+          if (!perfLow()) {
+            var mk = "linear-gradient(180deg,rgba(0,0,0,0) 0%,rgba(0,0,0,1) 9%,rgba(0,0,0,1) 91%,rgba(0,0,0,0) 100%)";
+            try { body.style.webkitMaskImage = mk; body.style.maskImage = mk; } catch (e) {}
+          }
           var inner = document.createElement("div");
           inner.style.cssText = "position:absolute;left:0;top:0;width:100%;"
             + "color:" + (n0.color || "#ffffff") + ";font:" + fcss + ";" + visCss(z);
