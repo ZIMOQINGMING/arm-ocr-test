@@ -80,9 +80,10 @@ jobs:
 
       - name: Package clean bundle
         run: |
-          cd mediaboard
-          rm -f content/01-red.png content/02-green.png content/03-blue.png playlist.js
           docker run --rm -v "$GITHUB_WORKSPACE:/w" -w /w debian:bookworm bash -c '
+            rm -f /w/mediaboard/content/01-red.png /w/mediaboard/content/02-green.png \
+                  /w/mediaboard/content/03-blue.png /w/mediaboard/playlist.js \
+                  /w/shot1.png /w/shot2.png
             apt-get update -qq >/dev/null && apt-get install -y -qq imagemagick >/dev/null 2>&1
             convert -size 1280x720 "xc:#103050" -pointsize 60 -fill white -gravity center \
               -annotate 0 "MediaBoard Ready" /w/mediaboard/content/00-welcome.png
