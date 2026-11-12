@@ -54,7 +54,7 @@ jobs:
             sleep 2
             export DISPLAY=:99
             # 显式指定窗口尺寸与位置：Xvfb 没有窗口管理器，kiosk 全屏请求不会被满足
-            chromium --no-sandbox --disable-gpu --noerrdialogs --disable-infobars \
+            chromium --no-sandbox --test-type --disable-gpu --noerrdialogs --disable-infobars \
               --no-first-run --no-default-browser-check --disable-background-networking \
               --force-device-scale-factor=1 --lang=zh-CN \
               --window-position=0,0 --window-size=1280,720 --start-fullscreen \
@@ -68,7 +68,7 @@ jobs:
             kill $CPID 2>/dev/null || true
 
             # 诊断信息截图（画面左上角打印 viewport 与各分区实际像素矩形）
-            chromium --no-sandbox --disable-gpu --noerrdialogs --disable-infobars \
+            chromium --no-sandbox --test-type --disable-gpu --noerrdialogs --disable-infobars \
               --no-first-run --force-device-scale-factor=1 --lang=zh-CN \
               --window-position=0,0 --window-size=1280,720 --start-fullscreen \
               "file:///w/mediaboard/player.html?diag=1" >/dev/null 2>&1 &
@@ -120,17 +120,22 @@ jobs:
           # --- 几何: 分区边界必须落在布局声明处 ---
           row = segments_row(im1, 250)
           print("row y=250 segments:", [(s[0], s[1], s[2]) for s in row])
-          main_seg = [s for s in row if s[2][0] > 100 and s[2][2] < 150]
-          assert main_seg, "main zone color not found"
-          main_right = main_seg[0][1]
-          print("main zone right edge measured:", main_right, "expected ~%d (70%% of %d)" % (int(W*0.70), W))
-          assert abs(main_right - W*0.70) <= 12, "FAIL: main zone width wrong"
+          assert row[0][0] == 0, "FAIL: main zone does not start at x=0"
+          main_right = row[0][1]
+          print("main zone right edge:", main_right, "expected", int(W*0.70), "(70%% of %d)" % W)
+          assert abs(main_right + 1 - W*0.70) <= 14, "FAIL: main zone width wrong"
+          assert row[-1][1] >= W - 3, "FAIL: sidebar does not reach right edge"
 
           col = segments_col(im1, 400)
           print("col x=400 segments:", [(s[0], s[1], s[2]) for s in col])
-          assert col[0][0] <= 2, "FAIL: main zone does not start at top (letterboxing)"
-          assert im1.getpixel((3, 3))[0] + im1.getpixel((3, 3))[1] + im1.getpixel((3, 3))[2] > 40, \
-              "FAIL: top-left corner black - page not covering screen"
+          assert col[0][0] == 0, "FAIL: main zone does not start at y=0 (infobar/letterboxing)"
+          top_px = im1.getpixel((400, 2))
+          print("top pixel:", top_px)
+          assert not (top_px[0] > 240 and top_px[1] > 240 and top_px[2] > 240), \
+              "FAIL: white bar at top (browser infobar still visible)"
+          main_bottom = col[0][1]
+          print("main zone bottom:", main_bottom, "expected", int(H*0.86), "(86%% of %d)" % H)
+          assert abs(main_bottom + 1 - H*0.86) <= 14, "FAIL: main zone height wrong"
 
           # --- 内容推进 ---
           def avg(im, x, y, w, h):
