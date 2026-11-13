@@ -133,9 +133,10 @@ def render(png, wait=2.4, url="player.html"):
     e = os.environ.copy()
     e["DISPLAY"] = DISPLAY
     p = subprocess.Popen(
-        [CHROME, "--app=" + _url(url), "--window-size=%d,%d" % (W, H),
+        [CHROME, "--app=" + _url(url), "--window-size=%d,%d" % (W, H), "--window-position=0,0",
          "--no-first-run", "--no-default-browser-check", "--allow-file-access-from-files",
          "--disable-gpu", "--force-device-scale-factor=1", "--lang=zh-CN",
+         "--test-type", "--disable-infobars", "--disable-session-crashed-bubble",
          "--disable-background-networking", "--autoplay-policy=no-user-gesture-required"],
         env=e, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     try:
@@ -155,9 +156,10 @@ def render_seq(pngs, gaps):
     e = os.environ.copy()
     e["DISPLAY"] = DISPLAY
     p = subprocess.Popen(
-        [CHROME, "--app=" + _url("player.html"), "--window-size=%d,%d" % (W, H),
+        [CHROME, "--app=" + _url("player.html"), "--window-size=%d,%d" % (W, H), "--window-position=0,0",
          "--no-first-run", "--no-default-browser-check", "--allow-file-access-from-files",
-         "--disable-gpu", "--force-device-scale-factor=1", "--lang=zh-CN"],
+         "--disable-gpu", "--force-device-scale-factor=1", "--lang=zh-CN",
+         "--test-type", "--disable-infobars"],
         env=e, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     out = []
     try:
@@ -203,13 +205,21 @@ def P(fx0, fy0, fx1, fy1):
 
 
 def calib(png):
-    """从一张铺满画面的截图反推内容区边界（页面底色非纯黑，黑边为 0,0,0）"""
+    """从一张铺满画面的截图反推内容区边界（页面底色非纯黑，黑边为 0,0,0）
+    —— 顶部若有 Chromium 警告条（整行近白），先跳过，否则所有相对坐标会整体下移"""
     global CBOX
     im = load(png)
     px = im.load()
     w, h = im.size
+    y_from = 0
+    for y in range(0, min(120, h)):
+        row = [px[x, y] for x in range(0, w, 8)]
+        if sum(sum(c) for c in row) / float(len(row)) < 600:
+            y_from = y
+            break
+        y_from = y + 1
     xs, ys = [], []
-    for y in range(0, h, 2):
+    for y in range(y_from, h, 2):
         for x in range(0, w, 2):
             r, g, b = px[x, y]
             if r + g + b > 0:
