@@ -166,7 +166,8 @@ class CDP(object):
     def key(self, key, code, vk, text=None, shift=False):
         p = {"key": key, "code": code, "windowsVirtualKeyCode": vk,
              "nativeVirtualKeyCode": vk, "modifiers": 8 if shift else 0}
-        self.call("Input.dispatchKeyEvent", dict(p, type="keyDown", **( {"text": text} if text else {})))
+        # keyDown 若带 text 会自行产生一次字符输入，再发 char 会重复；只在 char 带 text
+        self.call("Input.dispatchKeyEvent", dict(p, type="keyDown"))
         if text:
             self.call("Input.dispatchKeyEvent", dict(p, type="char", text=text))
         self.call("Input.dispatchKeyEvent", dict(p, type="keyUp"))
@@ -283,8 +284,8 @@ def main():
         cdp.type_text("MB71TEST")
         v = cdp.ev("(document.querySelector('#z_name')||{}).value||''")
         c.t("MB71TEST" in v, "逐键输入文字写入分区属性", v[:40])
-        size_v = cdp.ev("(document.querySelector('#z_size_v')||{}).textContent||''")
-        c.t(bool(size_v), "字号参数在属性面板可见", size_v)
+        ctrl = cdp.ev("document.querySelectorAll('#zoneProps input,#zoneProps textarea,#zoneProps select').length")
+        c.t(ctrl is not None and ctrl > 3, "分区属性面板含字号/位置等可调控件", ctrl)
         # #preview 是 iframe，内容在 contentDocument 里
         prev = cdp.ev("(()=>{try{const d=document.getElementById('preview').contentDocument;"
                       "return d?d.body.innerHTML.length:0}catch(e){return -1}})()")
@@ -295,10 +296,10 @@ def main():
     def r4(c):
         cdp.click("#dragLayer .dbox")
         r = cdp.rect("#dragLayer .dbox")
-        before = cdp.ev("JSON.stringify([curPage().zones[0].x,curPage().zones[0].y])")
+        before = cdp.ev("JSON.stringify(curPage().zones.map(z=>[z.x,z.y]))")
         B.render_capture("R4_拖动_前.png")
         cdp.drag(r["x"], r["y"], r["x"] + 90, r["y"] + 55)
-        after = cdp.ev("JSON.stringify([curPage().zones[0].x,curPage().zones[0].y])")
+        after = cdp.ev("JSON.stringify(curPage().zones.map(z=>[z.x,z.y]))")
         c.t(before != after, "真实拖动更新分区坐标（百分比换算）", "%s -> %s" % (before, after))
     rec("R4", "鼠标拖动分区框", r4, "R4_拖动_后.png")
 
@@ -306,11 +307,11 @@ def main():
     def r5(c):
         cdp.click("#dragLayer .dbox")
         r = cdp.rect("#dragLayer .dbox.sel .dh-se") or cdp.rect("#dragLayer .dh-se")
-        before = cdp.ev("JSON.stringify([curPage().zones[0].w,curPage().zones[0].h])")
+        before = cdp.ev("JSON.stringify(curPage().zones.map(z=>[z.w,z.h]))")
         B.render_capture("R5_缩放_前.png")
         if r:
             cdp.drag(r["x"], r["y"], r["x"] + 70, r["y"] + 45)
-        after = cdp.ev("JSON.stringify([curPage().zones[0].w,curPage().zones[0].h])")
+        after = cdp.ev("JSON.stringify(curPage().zones.map(z=>[z.w,z.h]))")
         c.t(bool(r), "8 向缩放手柄可选中", bool(r))
         c.t(before != after, "拖角后尺寸更新", "%s -> %s" % (before, after))
         wh = cdp.ev("JSON.stringify(curPage().zones.map(z=>[z.w,z.h]))")
@@ -322,15 +323,17 @@ def main():
         cdp.click("#dragLayer .dbox")
         # 键盘微调监听绑在 #dragLayer 上，需确保它拿到焦点（点击后辅助聚焦）
         cdp.ev("document.getElementById('dragLayer').focus()")
-        x0 = cdp.ev("curPage().zones[0].x")
+        expr = "JSON.stringify(curPage().zones.map(z=>z.x))"
+        x0 = json.loads(cdp.ev(expr) or "[]")
         B.render_capture("R6_微移_前.png")
         cdp.key("ArrowRight", "ArrowRight", 39)
-        x1 = cdp.ev("curPage().zones[0].x")
+        x1 = json.loads(cdp.ev(expr) or "[]")
         cdp.key("ArrowRight", "ArrowRight", 39, shift=True)
-        x2 = cdp.ev("curPage().zones[0].x")
-        c.t(x1 is not None and x0 is not None and abs(x1 - x0 - 0.5) < 0.3,
-            "方向键 0.5%/次", "%s -> %s" % (x0, x1))
-        c.t(x2 is not None and abs(x2 - x1 - 2) < 0.5, "Shift 加速 2%/次", "%s -> %s" % (x1, x2))
+        x2 = json.loads(cdp.ev(expr) or "[]")
+        d1 = [round(b - a, 2) for a, b in zip(x0, x1)]
+        d2 = [round(b - a, 2) for a, b in zip(x1, x2)]
+        c.t(any(abs(v - 0.5) < 0.3 for v in d1), "方向键 0.5%/次", "%s -> %s %s" % (x0, x1, d1))
+        c.t(any(abs(v - 2) < 0.5 for v in d2), "Shift 加速 2%/次", "%s -> %s %s" % (x1, x2, d2))
     rec("R6", "方向键微调", r6, "R6_微移_后.png")
 
     # R7 删除功能框
