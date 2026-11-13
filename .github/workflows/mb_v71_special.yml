@@ -38,6 +38,10 @@ jobs:
             MB_PKG=/w/mediaboard MB_WORK=/w/work/mediaboard MB_SHOT=/out/shots MB_CHROME=chromium python3 /w/tools/v71_special.py || true
             echo "---- 专项结果 ----"
             cat /out/special_results.tsv | head -60
+            echo "---- R 组：真实鼠标键盘操作模拟 ----"
+            MB_PKG=/w/mediaboard MB_WORK=/w/work/mediaboard MB_SHOT=/out/shots MB_CHROME=chromium python3 /w/tools/v71_rgroup.py || true
+            echo "---- R 组结果 ----"
+            cat /out/rgroup_results.tsv | head -30
           '
 
       - name: Upload special artifacts
@@ -49,6 +53,8 @@ jobs:
             /tmp/out/shots
             /tmp/out/special_results.json
             /tmp/out/special_results.tsv
+            /tmp/out/rgroup_results.json
+            /tmp/out/rgroup_results.tsv
           if-no-files-found: warn
           retention-days: 14
 
