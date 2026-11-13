@@ -423,7 +423,6 @@ def a04(c):
     render("A-04_自检页.png", wait=3.0, url="player.html?selftest=1")
 
 
-@case("A-05", "A 部署与基础播放", "停止与重配")
 def pids():
     """当前播 player.html 的浏览器 pid 列表（用 [] 避免 grep 自身命令行被算进去）"""
     out = subprocess.run("ps -ef | grep '[p]layer\\.html' | awk '{print $2}'", shell=True,
@@ -431,6 +430,7 @@ def pids():
     return out
 
 
+@case("A-05", "A 部署与基础播放", "停止与重配")
 def a05(c):
     setup("主画面=0,0,100,92", settings="DURATION=6\n", zones={"主画面": (None, None)})
     img("content/主画面/01.png", "#0a3c78")
@@ -442,6 +442,7 @@ def a05(c):
     c.t("停止" in (r.stdout + r.stderr), "stop.sh 有执行反馈", (r.stdout + r.stderr).strip()[:40])
     time.sleep(4)          # 看门狗 sleep 3 后重启，等它一轮
     after = pids()
+    render_capture("A-05_停止后仍在播.png")
     c.t(bool(before) and set(after) != set(before), "stop.sh 杀掉了当时的浏览器实例",
         "%s -> %s" % (before[:2], after[:2]))
     c.t(not after, "停止后无残留播放进程（真停机）", after[:3] if after else "0")
@@ -451,7 +452,7 @@ def a05(c):
     c.t(not left2, "结束 start.sh 进程组后彻底无残留", left2[:3] if left2 else "0")
     c.t('duration:"6"' in playlist() or "duration:6" in playlist(), "新时长 DURATION=6 生效",
         re.findall(r'duration:"?(\d+)"?', playlist())[:3])
-    c.info("stop.sh 只 pkill 浏览器；start.sh 的 while 看门狗 3 秒后会重新拉起，故单跑 stop.sh 不能停机")
+    c.info("stop.sh 只 pkill 浏览器（且路径写死 mediaboard/player.html）；start.sh 的 while 看门狗 3 秒后会重新拉起，故单跑 stop.sh 不能停机")
 
 
 # ================================================================ B 党政排版库
@@ -1577,8 +1578,8 @@ def i09(c):
     c.t("产量.json" in pl, "DATASRC 进 playlist", "产量.json" in pl)
     shot = render("I-09_数据JSON.png", wait=3.5)
     # 数字区域：1000 -> 1888 字形必然不同（DOM 快照会赶在 XHR 回调前，故用像素判）
-    d = diff_frac(base, shot, P(.02, .12, .34, .30))
-    c.t(d > 0.01, "页面数值被 JSON 值替换（1000→1888）", d)
+    d = diff_frac(base, shot, P(.03, .28, .20, .37))
+    c.t(d > 0.02, "页面数值被 JSON 值替换（1000→1888）", d)
     c.info("REFRESH=10 为分钟级定时器，本项验证首次装载取数；分钟级刷新未实时等待")
 
 
