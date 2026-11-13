@@ -1,0 +1,73 @@
+name: MediaBoard-v7.1-special
+on:
+  push:
+    paths:
+      - "tools/v71_special.py"
+      - "tools/v71_rgroup.py"
+      - ".github/workflows/mb_v71_special.yml"
+  workflow_dispatch:
+
+jobs:
+  special:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Prepare output dir
+        run: mkdir -p /tmp/out/shots && chmod -R 777 /tmp/out
+
+      - name: Chapter 14/15 special verification (real chromium + Xvfb)
+        run: |
+          docker run --rm -v "$GITHUB_WORKSPACE:/w" -v /tmp/out:/out debian:bookworm bash -c '
+            set -e
+            export DEBIAN_FRONTEND=noninteractive
+            apt-get update -qq >/dev/null
+            apt-get install -y -qq chromium imagemagick python3-pil xvfb fonts-noto-cjk nodejs procps zip unzip >/dev/null 2>&1
+            chromium --version
+            printf "#!/bin/sh\nexec /usr/bin/chromium --no-sandbox --test-type --disable-dev-shm-usage \"\$@\"\n" > /usr/local/bin/chromium
+            chmod +x /usr/local/bin/chromium
+            rm -rf /w/mediaboard
+            tar xzf /w/dist/mediaboard-kylin-arm64-v7.1.tar.gz -C /w
+            export DISPLAY=:99
+            Xvfb :99 -screen 0 1280x720x24 >/dev/null 2>&1 &
+            sleep 2
+            xdpyinfo -display :99 >/dev/null || { echo "Xvfb failed"; exit 1; }
+            cd /w
+            mkdir -p /w/work
+            MB_PKG=/w/mediaboard MB_WORK=/w/work/mediaboard MB_SHOT=/out/shots MB_CHROME=chromium python3 /w/tools/v71_special.py || true
+            echo "---- 专项结果 ----"
+            cat /out/special_results.tsv | head -60
+          '
+
+      - name: Upload special artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mediaboard-v7.1-special
+          path: |
+            /tmp/out/shots
+            /tmp/out/special_results.json
+            /tmp/out/special_results.tsv
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Summary
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import json, os
+          p = "/tmp/out/special_results.json"
+          if not os.path.exists(p):
+              print("no results")
+              raise SystemExit(0)
+          rs = json.load(open(p, encoding="utf-8"))
+          ok = sum(1 for r in rs if r["ok"])
+          print("SPECIAL PASS %d / %d" % (ok, len(rs)))
+          for r in rs:
+              if not r["ok"]:
+                  print("FAIL", r["id"], r["title"])
+                  for n in r["notes"]:
+                      if n.startswith("FAIL"):
+                          print("   ", n)
+          PY
