@@ -43,6 +43,7 @@ def run(cmd, cwd=None, env=None, timeout=120, check=False):
 
 
 def reset():
+    stop_all()          # 先清干净上一个用例可能残留的看门狗与浏览器
     if os.path.isdir(WORK):
         shutil.rmtree(WORK, ignore_errors=True)
     shutil.copytree(PKG, WORK)
@@ -335,7 +336,7 @@ def stop_loop(p):
         os.killpg(os.getpgid(p.pid), -9)
     except Exception:
         pass
-    kill_kiosk()
+    stop_all()
 
 
 @case("A-01", "A 部署与基础播放", "安装与启动")
@@ -465,6 +466,26 @@ def pids():
 def kill_kiosk():
     for pid in pids():
         run("kill -9 %s 2>/dev/null || true" % pid)
+
+
+def stop_all():
+    """把 start.sh 看门狗与它拉起的浏览器一并清干净（多次重试：杀死后看门狗可能再拉一个）"""
+    for _ in range(14):
+        hit = False
+        out = subprocess.run("ps -eo pid,args", shell=True, capture_output=True, text=True).stdout
+        for ln in out.splitlines()[1:]:
+            parts = ln.strip().split(None, 1)
+            if len(parts) != 2:
+                continue
+            pid, args = parts
+            if pid in ("1", str(os.getpid())):
+                continue
+            if ("player.html" in args) or ("start.sh" in args and "ps -eo" not in args):
+                run("kill -9 %s 2>/dev/null || true" % pid)
+                hit = True
+        if not hit and not pids():
+            break
+        time.sleep(0.6)
 
 
 @case("A-05", "A 部署与基础播放", "停止与重配")
