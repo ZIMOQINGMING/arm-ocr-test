@@ -1,10 +1,6 @@
 name: MediaBoard-v7-acceptance
 on:
-  push:
-    paths:
-      - "dist/**"
-      - "tools/**"
-      - ".github/workflows/mb_v7_acceptance.yml"
+  # v7 历史工作流保留手动触发；自动回归改由 mb_v71_acceptance.yml 承担
   workflow_dispatch:
 
 jobs:
