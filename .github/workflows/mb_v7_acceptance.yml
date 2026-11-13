@@ -39,8 +39,7 @@ jobs:
             sleep 2
             xdpyinfo -display :99 >/dev/null || { echo "Xvfb failed"; exit 1; }
             cd /w
-            # 工作目录刻意用真实安装名 mediaboard：stop.sh 里 pkill -f "mediaboard/player.html"
-            # 依赖这个路径片段，换成别的目录名就杀不到进程
+            # 工作目录刻意用真实安装名 mediaboard（stop.sh 依赖这个路径片段）
             mkdir -p /w/work
             MB_PKG=/w/mediaboard MB_WORK=/w/work/mediaboard MB_SHOT=/out/shots MB_CHROME=chromium python3 /w/tools/v7_acceptance.py || true
             echo "---- 结果汇总 ----"

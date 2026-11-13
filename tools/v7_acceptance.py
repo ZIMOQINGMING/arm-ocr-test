@@ -335,7 +335,7 @@ def stop_loop(p):
         os.killpg(os.getpgid(p.pid), -9)
     except Exception:
         pass
-    run("pkill -9 -f 'player.html' || true")
+    kill_kiosk()
 
 
 @case("A-01", "A 部署与基础播放", "安装与启动")
@@ -415,7 +415,7 @@ def a03(c):
         time.sleep(8)
         before = (pids() or [""])[0]
         c.t(bool(before), "启动后 chromium 在跑", before)
-        run("pkill -9 -f 'player.html' || true")
+        kill_kiosk()
         time.sleep(2)
         mid = (pids() or [""])[0]
         time.sleep(6)
@@ -445,10 +445,26 @@ def a04(c):
 
 
 def pids():
-    """当前播 player.html 的浏览器 pid 列表（用 [] 避免 grep 自身命令行被算进去）"""
-    out = subprocess.run("ps -ef | grep '[p]layer\\.html' | awk '{print $2}'", shell=True,
-                         capture_output=True, text=True).stdout.split()
-    return out
+    """start.sh 看门狗拉起的 kiosk 浏览器 pid 列表
+    —— 只认带 --kiosk 的 player.html 进程：容器 pid 1（整段 shell 脚本）与 render() 的
+       --app 临时窗口都会命中子串 player.html，必须排除"""
+    out = subprocess.run("ps -eo pid,args", shell=True, capture_output=True, text=True).stdout
+    res = []
+    for ln in out.splitlines()[1:]:
+        parts = ln.strip().split(None, 1)
+        if len(parts) != 2:
+            continue
+        pid, args = parts
+        if pid == "1":
+            continue
+        if "player.html" in args and "--kiosk" in args:
+            res.append(pid)
+    return res
+
+
+def kill_kiosk():
+    for pid in pids():
+        run("kill -9 %s 2>/dev/null || true" % pid)
 
 
 @case("A-05", "A 部署与基础播放", "停止与重配")
