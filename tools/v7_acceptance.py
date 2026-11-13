@@ -368,6 +368,27 @@ def render_capture(png):
     return os.path.join(SHOT, png)
 
 
+CJK_FONT = "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc"
+
+
+def cli_shot(png, text):
+    """把命令行回显渲染成 PNG —— CLI 类测项的取证图（无窗口可截）"""
+    tf = os.path.join(SHOT, "_cli_" + png.replace("/", "_") + ".txt")
+    open(tf, "w", encoding="utf-8").write(text[:5000])
+    out = os.path.join(SHOT, png)
+    cmd = ["convert", "-size", "1240x690", "-background", "#0b1220", "-fill", "#dbe7f3",
+           "-pointsize", "15"]
+    if os.path.exists(CJK_FONT):
+        cmd += ["-font", CJK_FONT]
+    cmd += ["caption:@" + tf, out]
+    r = run(cmd, timeout=90)
+    if not os.path.exists(out) or os.path.getsize(out) < 1000:
+        # 退路：纯文本截图失败就渲染一张带标题的占位（仍保留原始回显在同名 .txt）
+        run(["convert", "-size", "1240x690", "xc:#0b1220", "-fill", "#dbe7f3",
+             "-pointsize", "18", "-annotate", "+40+60", png.replace(".png", ""), out], timeout=90)
+    return out
+
+
 @case("A-02", "A 部署与基础播放", "默认三页轮播")
 def a02(c):
     lay = open(os.path.join(PKG, "layout.txt"), encoding="utf-8").read().replace("--- 20", "--- 8")
@@ -1139,6 +1160,7 @@ def g02(c):
     c.t(len(lines) > 0, "能列出系统字体清单", lines[:2])
     c.t("提示" in out0, "无命中时给出用法提示", out0.strip().splitlines()[-1][:60] if out0.strip() else "")
     # 关键词过滤：用清单里第一个字体名的前 4 个字符当关键词，必须能命中它
+    out1 = ""
     if lines:
         kw = os.path.basename(lines[0].split()[0])[:4]
         r1 = run(["./import-fonts.sh", "--list", kw], timeout=180)
@@ -1148,6 +1170,10 @@ def g02(c):
     r2 = run(["./import-fonts.sh", "--list", "不存在的字体xyz"], timeout=180)
     c.t("提示" in (r2.stdout + r2.stderr), "无命中只给提示不报错", r2.returncode)
     c.info("容器内无中文字体的楷/宋分类，故用系统字体名当关键词验证列举与过滤逻辑；真机麒麟可用 fc-list :lang=zh 核对")
+    cli_shot("G-02_字体列举.png", "$ ./import-fonts.sh --list\n" + out0 +
+             "\n$ ./import-fonts.sh --list " + (os.path.basename(lines[0].split()[0])[:4] if lines else "Noto") +
+             "\n" + (out1 if lines else "") +
+             "\n$ ./import-fonts.sh --list 不存在的字体xyz\n" + r2.stdout + r2.stderr)
 
 
 @case("G-03", "G 字体与导入", "字体导入（v7）")
@@ -1169,6 +1195,8 @@ def g03(c):
     c.t(r.returncode == 0, "导入命令成功", r.returncode)
     c.t(after > before, "字体已复制进 fonts/", "%d -> %d" % (before, after))
     c.t("FONTS.txt" in (r.stdout + r.stderr), "提示写 FONTS.txt 别名", (r.stdout + r.stderr).strip()[-100:])
+    cli_shot("G-03_字体导入.png", "$ ./import-fonts.sh %s\n%s\n\nfonts/ 内字体文件数：%d -> %d"
+             % (src, (r.stdout + r.stderr).strip(), before, after))
 
 
 @case("G-04", "G 字体与导入", "导入生效")
@@ -1199,6 +1227,7 @@ def g05(c):
     c.t("字体" in txt, "自检含字体项")
     marks = txt.count("✔") + txt.count("√")
     c.t(marks >= 3, "字体逐项显示加载结果", marks)
+    render("G-05_字体自检.png", wait=3.0, url="player.html?selftest=1")
 
 
 @case("G-06", "G 字体与导入", "回退安全")
