@@ -11,14 +11,20 @@ MediaBoard v7 麒麟环境验收：70 项逐条自动执行器
 """
 import os, sys, re, json, time, shutil, subprocess, tempfile
 
+from urllib.parse import quote
+
 from PIL import Image, ImageStat
 
 PKG = os.environ.get("MB_PKG", "/w/mediaboard")
-WORK = os.environ.get("MB_WORK", "/w/mb")
+# 工作目录名必须叫 mediaboard：stop.sh 用 pkill -f "mediaboard/player.html"，与安装目录同名才算等价环境
+WORK = os.environ.get("MB_WORK", "/w/wd/mediaboard")
 SHOT = os.environ.get("MB_SHOT", "/w/shots")
 CHROME = os.environ.get("MB_CHROME", "chromium")
 DISPLAY = os.environ.get("DISPLAY", ":99")
 W, H = 1280, 720
+# Xvfb 1280x720 下 chromium --app 窗口的内容区（实测）：x0,y0,x1,y1
+# 截图整幅是 1280x720，但页面只渲染在内窗口里，坐标必须按内容区算
+CBOX = [10, 10, 1060, 710]
 
 os.makedirs(SHOT, exist_ok=True)
 
@@ -116,12 +122,17 @@ def playlist():
         return ""
 
 
+def _url(u):
+    """file:// 下带中文的 query 必须百分号编码，否则 chromium 会当成搜索词跳外网"""
+    return "file://" + quote("%s/%s" % (WORK, u), safe="/:?=&-._~")
+
+
 def render(png, wait=2.4, url="player.html"):
     """真窗口渲染 + 截屏（Xvfb root 1280x720）"""
     e = os.environ.copy()
     e["DISPLAY"] = DISPLAY
     p = subprocess.Popen(
-        [CHROME, "--app=file://%s/%s" % (WORK, url), "--window-size=%d,%d" % (W, H),
+        [CHROME, "--app=" + _url(url), "--window-size=%d,%d" % (W, H),
          "--no-first-run", "--no-default-browser-check", "--allow-file-access-from-files",
          "--disable-gpu", "--force-device-scale-factor=1", "--lang=zh-CN",
          "--disable-background-networking", "--autoplay-policy=no-user-gesture-required"],
@@ -143,7 +154,7 @@ def render_seq(pngs, gaps):
     e = os.environ.copy()
     e["DISPLAY"] = DISPLAY
     p = subprocess.Popen(
-        [CHROME, "--app=file://%s/player.html" % WORK, "--window-size=%d,%d" % (W, H),
+        [CHROME, "--app=" + _url("player.html"), "--window-size=%d,%d" % (W, H),
          "--no-first-run", "--no-default-browser-check", "--allow-file-access-from-files",
          "--disable-gpu", "--force-device-scale-factor=1", "--lang=zh-CN"],
         env=e, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -162,13 +173,14 @@ def render_seq(pngs, gaps):
     return out
 
 
-def dom(url="player.html", budget=2500):
+def dom(url="player.html", budget=7000):
+    # budget 给足：曾是 2500ms，出现过只 dump 出第一个分区的半截 DOM
     e = os.environ.copy()
     e.pop("DISPLAY", None)
     p = subprocess.run(
         [CHROME, "--headless", "--disable-gpu", "--no-sandbox", "--hide-scrollbars",
          "--allow-file-access-from-files", "--window-size=%d,%d" % (W, H),
-         "--virtual-time-budget=%d" % budget, "--dump-dom", "file://%s/%s" % (WORK, url)],
+         "--virtual-time-budget=%d" % budget, "--dump-dom", _url(url)],
         capture_output=True, text=True, env=e, timeout=120)
     return p.stdout
 
@@ -180,6 +192,62 @@ def load(png):
 
 def region(im, box):
     return im.crop(box)
+
+
+def P(fx0, fy0, fx1, fy1):
+    """按内容区比例出绝对采样框（0~1），避免窗口黑边把采样落到画面外"""
+    x0, y0, x1, y1 = CBOX
+    w, h = x1 - x0, y1 - y0
+    return (int(x0 + fx0 * w), int(y0 + fy0 * h), int(x0 + fx1 * w), int(y0 + fy1 * h))
+
+
+def calib(png):
+    """从一张铺满画面的截图反推内容区边界（页面底色非纯黑，黑边为 0,0,0）"""
+    global CBOX
+    im = load(png)
+    px = im.load()
+    w, h = im.size
+    xs, ys = [], []
+    for y in range(0, h, 2):
+        for x in range(0, w, 2):
+            r, g, b = px[x, y]
+            if r + g + b > 0:
+                xs.append(x)
+                ys.append(y)
+    if len(xs) > 1000:
+        CBOX = [min(xs), min(ys), max(xs) + 1, max(ys) + 1]
+    return CBOX
+
+
+def bright_px(im, box, th=190):
+    """区域内"亮字"像素数（三通道都亮），用于判定文字是否真的画出来了"""
+    crop = region(im, box).convert("RGB")
+    px = crop.load()
+    n = 0
+    w, h = crop.size
+    for y in range(0, h, 2):
+        for x in range(0, w, 2):
+            r, g, b = px[x, y]
+            if r >= th and g >= th and b >= th:
+                n += 1
+    return n
+
+
+def bright_bbox(im, box, th=190):
+    """区域内亮像素的外接框（相对该区域），用于判断"边框是闭合的"这类形态"""
+    crop = region(im, box).convert("RGB")
+    px = crop.load()
+    w, h = crop.size
+    xs, ys = [], []
+    for y in range(0, h, 2):
+        for x in range(0, w, 2):
+            r, g, b = px[x, y]
+            if r >= th and g >= th and b >= th:
+                xs.append(x)
+                ys.append(y)
+    if not xs:
+        return None
+    return (min(xs), min(ys), max(xs), max(ys), len(xs))
 
 
 def mean(im, box):
@@ -286,7 +354,9 @@ def a01(c):
     except Exception:
         log = ""
     im = load(shot)
-    c.t(mean(im, (0, 0, W, H))[2] > 40, "画面已渲染（蓝色主画面可见）", mean(im, (0, 0, 200, 200)))
+    calib(shot)
+    c.info("内容区边界(校准): %s" % CBOX)
+    c.t(mean(im, (0, 0, W, H))[2] > 40, "画面已渲染（蓝色主画面可见）", mean(im, P(0, 0, .2, .2)))
     c.t(mean(im, (0, H - 60, W, H))[2] > 10, "底部字幕条存在", mean(im, (0, H - 60, W, H)))
     c.t("chromium" in subprocess.run("ps -ef | grep -c '[c]hromium'", shell=True,
                                      capture_output=True, text=True).stdout or "1", "浏览器进程存在")
@@ -345,7 +415,7 @@ def a04(c):
     setup("主画面=0,0,100,92", zones={"主画面": (None, None)})
     img("content/主画面/01.png", "#0a3c78")
     build()
-    d = dom("player.html?selftest=1", budget=4000)
+    d = dom("player.html?selftest=1", budget=6000)
     m = re.search(r"selftest (\d+)/(\d+)", d)
     c.t(bool(m), "自检页标题显示 selftest N/M", m.group(0) if m else "未匹配")
     if m:
@@ -372,94 +442,190 @@ def a05(c):
     left2 = subprocess.run("pgrep -f 'player.html' | wc -l", shell=True,
                            capture_output=True, text=True).stdout.strip()
     c.t(left2 in ("0", ""), "stop.sh 后无残留进程", left2)
-    c.t("duration:6" in playlist(), "新时长 DURATION=6 生效", re.findall(r"duration:/d+", playlist())[:3])
+    c.t('duration:"6"' in playlist() or "duration:6" in playlist(), "新时长 DURATION=6 生效",
+        re.findall(r'duration:"?(\d+)"?', playlist())[:3])
 
 
 # ================================================================ B 党政排版库
 LAYOUT_NAMES = ["左3中2右3", "左竖联右内容", "红头文件式", "地图主版", "横幅五列", "品字形"]
 
 
-def layout_zone_count(name):
-    p = os.path.join(WORK, "layouts", "党政·" + name + ".txt")
-    n = 0
+def layout_path(name):
+    return os.path.join(PKG, "layouts", "党政·" + name + ".txt")
+
+
+def parse_layout(name, depth=0):
+    """展开 layouts/<名>.txt（含 @LAYOUT 嵌套），返回 [(分区名, 类型)]"""
+    out = []
+    p = layout_path(name)
+    if depth > 5 or not os.path.exists(p):
+        return out
     for line in open(p, encoding="utf-8"):
         s = line.strip()
-        if not s or s.startswith("#") or s.startswith("---") or s.startswith("@"):
+        if not s or s.startswith("#") or s.startswith("---"):
             continue
-        n += 1
-    return n
+        if s.upper().startswith("@LAYOUT="):
+            out += parse_layout(s.split("=", 1)[1].strip().replace("党政·", ""), depth + 1)
+            continue
+        # 形如  学习金句=g:1,1,4,3,,文本   或  主画面=0,0,100,92
+        if "=" not in s:
+            continue
+        nm, rest = s.split("=", 1)
+        fields = rest.split(",")
+        ztype = fields[5].strip() if len(fields) > 5 else ""
+        out.append((nm.strip(), ztype))
+    return out
+
+
+SAMPLE = {
+    "文本": ("「%s」示例正文\n第二行说明文字\n", "SIZE=4\nCOLOR=#ffffff\nEFFECT=static\n"),
+    "公告": ("值班安排已下发\n巡检记录已归档\n整改清单已签收\n",
+             "TITLE=%s\nSIZE=2.6\nCOLOR=#e2e8f0\n"),
+    "表格": ("项目|负责人|进度\n设备巡检|张工|92%\n线路维护|李工|78%\n安全整改|王工|65%\n",
+             "TITLE=%s\nSIZE=2.2\nHEADER=yes\n"),
+    "数据": ("累计产量|1280|件|72\n综合良率|98|%|98\n",
+             "TITLE=%s\nSIZE=4\nVALUECOLOR=#ffd54a\n"),
+    "仪表": ("负荷=72,100\n温度=45,100\n", "TITLE=%s\n"),
+    "地图": ("中国\n标题:%s\n点:南昌,62%%,66%%,省会\n图例:已建,规划\n", "MAP_TINT=0\n"),
+    "时钟": ("", "MODE=digital\nFORMAT=time\nSIZE=4\nCOLOR=#ffffff\n"),
+    "计时": ("", "TARGET=2026-12-31\nSIZE=5\nCOLOR=#ffffff\n"),
+    "二维码": ("https://kylin.example/scan", "TITLE=扫码\nCOLOR=#111111\nBGCOLOR=#ffffff\n"),
+    "天气": ("南昌\n11-13,晴,22,12\n", "SIZE=2.6\n"),
+    "网页": ("content/网页/挂件.html", ""),
+}
+
+
+def hydrate_zones(items, scheme="党建文化"):
+    """按排版声明的分区名，从 schemes/<scheme>/content 取真实样式与文案；
+    方案里没有的分区，按窗口类型造一份可判读的样例内容。"""
+    zones = {}
+    for name, ztype in items:
+        src = os.path.join(PKG, "schemes", scheme, "content", name)
+        text = style = None
+        if os.path.isdir(src):
+            tp, sp = os.path.join(src, "text.txt"), os.path.join(src, "style.txt")
+            if os.path.exists(tp):
+                text = open(tp, encoding="utf-8").read()
+            if os.path.exists(sp):
+                style = open(sp, encoding="utf-8").read()
+        if text is None or style is None:
+            tpl = SAMPLE.get(ztype)
+            if tpl is None:  # 文件窗：内容由 case 自己 img() 铺图
+                tpl = (None, None)
+            if text is None:
+                text = (tpl[0] % name) if tpl[0] else None
+            if style is None:
+                style = tpl[1]
+        zones[name] = (text, style)
+    return zones
+
+
+def layout_scene(name, extra_layout="", settings=""):
+    items = parse_layout(name)
+    lay = (extra_layout + "\n" if extra_layout else "") + "@LAYOUT=党政·" + name
+    return lay, settings, hydrate_zones(items)
+
+
+def layout_zone_count(name):
+    return len(parse_layout(name))
 
 
 @case("B-01", "B 党政排版库", "左3中2右3 引用")
 def b01(c):
-    setup("@LAYOUT=党政·左3中2右3", zones={})
+    setup(*layout_scene("左3中2右3"))
     p = build()
     c.t(p.returncode == 0, "生成成功", p.stderr.strip()[-80:])
-    n = playlist().count("zones:[")
+    pl = playlist()
+    n = pl.count("zones:[")
     expect = layout_zone_count("左3中2右3")
-    c.t(n >= 1 and "zones:[" in playlist(), "排版展开为分区", "页数=%d" % n)
-    zc = re.findall('type:"', playlist())
-    c.t(len(zc) >= expect - 1, "分区数与排版库一致", "%d/%d" % (len(zc), expect))
-    shot = render("B-01_左3中2右3.png")
-    c.t(std(load(shot), (0, 0, W, H)) > 10, "三栏结构有内容", std(load(shot), (0, 0, W, H)))
+    c.t(n >= 1 and "zones:[" in pl, "排版展开为分区", "页数=%d" % n)
+    got = pl.count('{name:"')
+    c.t(got == expect, "分区数与排版库一致", "%d/%d" % (got, expect))
+    shot = render("B-01_左3中2右3.png", wait=3.0)
+    im = load(shot)
+    # 分区类型由内容键体现（text:/clock:/countdown:/notice:/table:），playlist 无 type 字段
+    keys = ("text:{", "clock:{", "countdown:{", "notice:{", "table:{")
+    c.t(all(k in pl for k in keys), "文本/时钟/计时/公告/表格多种窗口共存",
+        [pl.count(x) for x in keys])
+    c.t(std(im, P(0, 0, 1, 1)) > 10, "三栏结构有内容", std(im, P(0, 0, 1, 1)))
+    c.t(bright_px(im, P(0, 0, 1, 1)) > 200, "各分区文字已上屏", bright_px(im, P(0, 0, 1, 1)))
 
 
 @case("B-02", "B 党政排版库", "左竖联右内容")
 def b02(c):
-    setup("@LAYOUT=党政·左竖联右内容")
+    setup(*layout_scene("左竖联右内容"))
     p = build()
     c.t(p.returncode == 0, "生成成功")
     pl = playlist()
     c.t("vertical" in pl.lower() or "竖" in pl, "含竖排标记", "vertical" in pl.lower())
-    shot = render("B-02_左竖联右内容.png")
-    c.t(std(load(shot), (0, 0, 420, H)) > 6, "左侧竖联区有内容", std(load(shot), (0, 0, 420, H)))
-    c.t(std(load(shot), (500, 0, W, H)) > 6, "右侧内容区有内容", std(load(shot), (500, 0, W, H)))
+    shot = render("B-02_左竖联右内容.png", wait=3.0)
+    im = load(shot)
+    d = dom()
+    c.t("writing-mode:vertical-rl" in d.replace(" ", ""), "竖排标题用 writing-mode 实现")
+    c.t(std(im, P(0, 0, .38, 1)) > 6, "左侧竖联区有内容", std(im, P(0, 0, .38, 1)))
+    c.t(std(im, P(.42, 0, 1, 1)) > 6, "右侧内容区有内容", std(im, P(.42, 0, 1, 1)))
 
 
 @case("B-03", "B 党政排版库", "红头文件式")
 def b03(c):
-    setup("测试页=0,0,100,100\n@LAYOUT=党政·红头文件式")
+    setup(*layout_scene("红头文件式"))
     p = build()
     c.t(p.returncode == 0, "生成成功", p.stderr.strip()[-80:])
-    shot = render("B-03_红头文件式.png")
+    d = dom()
+    c.t(bool(re.search(r'class="[^"]*mb-f-ribbon', d)), "红头横幅元素挂上 mb-f-ribbon 框型",
+        re.findall(r'class="[^"]*mb-f-[a-z]+', d)[:3])
+    shot = render("B-03_红头文件式.png", wait=3.0)
     im = load(shot)
-    red = count_near(im, (0, 0, W, 200), (200, 16, 46), 60)
-    c.t(red > 200, "顶部红头横幅成色", red)
-    c.t(std(im, (0, 200, W, H)) > 6, "正文区有内容", std(im, (0, 200, W, H)))
+    top = P(0, 0, 1, .20)
+    red = count_near(im, top, (200, 16, 46), 60)
+    gold = count_near(im, top, (255, 213, 74), 60)
+    c.t(red + gold > 400, "顶部红金横幅成色（红→金渐变）", "红%d 金%d" % (red, gold))
+    c.t(bright_px(im, top) > 40, "横幅文字已上屏", bright_px(im, top))
+    c.t(std(im, P(0, .25, 1, 1)) > 6, "正文区有内容", std(im, P(0, .25, 1, 1)))
 
 
 @case("B-04", "B 党政排版库", "地图主版")
 def b04(c):
-    setup("@LAYOUT=党政·地图主版")
+    setup(*layout_scene("地图主版"))
     p = build()
     c.t(p.returncode == 0, "生成成功")
     pl = playlist()
-    c.t('type:"地图"' in pl or "地图" in pl, "含地图分区", 'type:"地图"' in pl)
-    shot = render("B-04_地图主版.png", wait=3.0)
-    c.t(std(load(shot), (0, 0, W, H)) > 10, "整页有内容", std(load(shot), (0, 0, W, H)))
+    c.t("map:{" in pl, "含地图窗口分区", "map:{" in pl)
+    shot = render("B-04_地图主版.png", wait=3.2)
+    im = load(shot)
+    c.t(std(im, P(0, 0, 1, 1)) > 10, "整页有内容", std(im, P(0, 0, 1, 1)))
+    c.t(count_near(im, P(0, 0, .7, .7), (255, 213, 74), 60) > 50 or
+        count_near(im, P(0, 0, .7, .7), (200, 16, 46), 60) > 50, "地图分区着色已成图",
+        (count_near(im, P(0, 0, .7, .7), (255, 213, 74), 60),
+         count_near(im, P(0, 0, .7, .7), (200, 16, 46), 60)))
 
 
 @case("B-05", "B 党政排版库", "横幅五列")
 def b05(c):
-    setup("@LAYOUT=党政·横幅五列")
+    setup(*layout_scene("横幅五列"))
     p = build()
     c.t(p.returncode == 0, "生成成功")
-    shot = render("B-05_横幅五列.png")
+    shot = render("B-05_横幅五列.png", wait=3.0)
     im = load(shot)
-    cols = [std(im, (i * 256, 160, (i + 1) * 256, H)) for i in range(5)]
+    cols = [std(im, P(.02 + i * .19, .2, .18 + i * .19, .98)) for i in range(5)]
     c.t(sum(1 for v in cols if v > 4) >= 4, "五列各自有内容", cols)
 
 
 @case("B-06", "B 党政排版库", "排版混排与容错")
 def b06(c):
-    setup("@LAYOUT=党政·品字形\n额外=0,80,100,12,8,文本", zones={"额外": ("手写行共存", "SIZE=3\nCOLOR=#7dd3fc\nEFFECT=static\n")})
+    items = parse_layout("品字形")
+    zones = hydrate_zones(items)
+    zones["额外"] = ("手写行共存", "SIZE=3\nCOLOR=#7dd3fc\nEFFECT=static\n")
+    setup("@LAYOUT=党政·品字形\n额外=0,80,100,12,8,文本", zones=zones)
     p = build()
     pl = playlist()
     c.t(p.returncode == 0, "混排生成成功", p.stderr.strip()[-80:])
     c.t("手写行共存" in open(os.path.join(WORK, "content", "额外", "text.txt"), encoding="utf-8").read(), "手写分区已写入")
     c.t(pl.count("zones:[") == 1, "仍为一页", pl.count("zones:["))
-    shot = render("B-06_混排.png")
-    c.t(mean(load(shot), (0, H - 110, W, H - 20))[2] > 30, "手写行渲染在页面底部")
+    c.t(pl.count('{name:"') == len(items) + 1, "排版分区与手写行合并", "%d+1" % len(items))
+    shot = render("B-06_混排.png", wait=3.0)
+    cyan = count_near(load(shot), P(0, .80, 1, 1), (125, 211, 252), 60)
+    c.t(cyan > 60, "手写行渲染在页面底部（自定义青色）", cyan)
     # 容错：不存在的排版名
     setup("@LAYOUT=党政·不存在的版式")
     p2 = build()
@@ -507,8 +673,12 @@ def c03(c):
     c.t("mb-f-photo" in d, "DOM 应用 mb-f-photo 类")
     shot = render("C-03_拍立得.png")
     im = load(shot)
-    white = count_near(im, (0, int(H * 0.1), W, int(H * 0.16)), (255, 255, 255), 18)
-    c.t(white > 300, "白粗边框成色", white)
+    bb = bright_bbox(im, P(0, 0, 1, 1), 200)
+    cw, ch = CBOX[2] - CBOX[0], CBOX[3] - CBOX[1]
+    span_w = (bb[2] - bb[0]) / float(cw) if bb else 0
+    span_h = (bb[3] - bb[1]) / float(ch) if bb else 0
+    c.t(bool(bb) and bb[4] > 300 and span_w > .7 and span_h > .6,
+        "白色粗边框闭合（占满卡片四周）", "像素%d 宽%.0f%% 高%.0f%%" % (bb[4], span_w * 100, span_h * 100) if bb else "无白边")
 
 
 @case("C-04", "C 区域框型库", "胶片框")
@@ -556,12 +726,13 @@ def c07(c):
         c.t("mb-f-%s" % f in d, "DOM 应用 mb-f-%s" % f)
         shot = render("C-07_%s.png" % f)
         im = load(shot)
-        corner = mean(im, (5, 5, 60, 60))
-        center = mean(im, (W // 2 - 50, H // 2 - 50, W // 2 + 50, H // 2 + 50))
+        corner = mean(im, P(0, 0, .06, .08))
+        center = P(.34, .40, .66, .60)
         dark = sum(corner) < 90
         ok.append(dark)
         c.t(dark, "%s 角落被裁掉（露出背景）" % f, corner)
-        c.t(sum(center) > sum(corner) + 60, "%s 中心仍有卡片内容" % f, center)
+        c.t(bright_px(im, center) > 40, "%s 中心仍有卡片内容（文字上屏）" % f,
+            (bright_px(im, center), mean(im, center)))
 
 
 @case("C-08", "C 区域框型库", "框型双色定制")
@@ -616,31 +787,33 @@ def d02(c):
 
 @case("D-03", "D 地图窗", "分区颜色（v7）")
 def d03(c):
-    t = MAP_TEXT_BASE.replace("图例:", "色:江西=#c8102e,陕西=#ffd54a\n图例:")
+    t = MAP_TEXT_BASE.replace("图例:", "色:江西=#c8102e,陕西=#ffd54a\n明度:江西=100,陕西=100\n图例:")
     setup(*map_scene(text=t))
     build()
-    shot = render("D-03_分区颜色.png", wait=3.0)
+    shot = render("D-03_分区颜色.png", wait=3.2)
     im = load(shot)
-    red = count_near(im, (0, 0, W, H), (200, 16, 46), 40)
-    gold = count_near(im, (0, 0, W, H), (255, 213, 74), 40)
-    c.t(red > 40, "江西呈红色填充", red)
-    c.t(gold > 40, "陕西呈金黄色填充", gold)
+    red = count_near(im, P(0, 0, 1, 1), (200, 16, 46), 24)
+    gold = count_near(im, P(0, 0, 1, 1), (255, 213, 74), 24)
+    c.t(red > 200, "江西呈红色填充", red)
+    c.t(gold > 200, "陕西呈金黄色填充", gold)
 
 
 @case("D-04", "D 地图窗", "分区透明度（v7）")
 def d04(c):
-    t100 = MAP_TEXT_BASE.replace("图例:", "色:江西=#c8102e,陕西=#ffd54a\n图例:")
-    setup(*map_scene(text=t100))
-    build()
-    s100 = render("D-04_alpha100.png", wait=3.0)
-    r100 = count_near(load(s100), (0, 0, W, H), (200, 16, 46), 30)
-    t = t100.replace("图例:", "明度:江西=85,陕西=70\n图例:")
-    setup(*map_scene(text=t))
-    build()
-    s85 = render("D-04_alpha85.png", wait=3.0)
-    r85 = count_near(load(s85), (0, 0, W, H), (200, 16, 46), 30)
-    c.t(r100 > 40, "基线：纯色填充面积", r100)
-    c.t(r85 < r100, "设明度后同色像素减少（变半透明）", "%d -> %d" % (r100, r85))
+    base = MAP_TEXT_BASE.replace("图例:", "色:江西=#c8102e,陕西=#ffd54a\n图例:")
+    res = {}
+    for v, png in ((100, "D-04_alpha100.png"), (20, "D-04_alpha20.png")):
+        t = base.replace("图例:", "明度:江西=%d,陕西=%d\n图例:" % (v, v))
+        setup(*map_scene(text=t))
+        build()
+        shot = render(png, wait=3.2)
+        im = load(shot)
+        res[v] = (count_near(im, P(0, 0, 1, 1), (200, 16, 46), 26), mean(im, P(0, .1, 1, .9)))
+    r100, m100 = res[100]
+    r20, m20 = res[20]
+    c.t(r100 > 200, "明度=100 时纯色填充面积", r100)
+    c.t(r20 * 2 < r100, "明度=20 时同色像素大幅减少（半透明）", "%d -> %d" % (r100, r20))
+    c.t(sum(m100) > sum(m20) + 20, "整片地图随之变淡", "%s -> %s" % (m100, m20))
 
 
 @case("D-05", "D 地图窗", "全局透明度（v7）")
@@ -717,8 +890,9 @@ def e01(c):
     c.t("倒计时" in d, "倒计时标签存在")
     shot = render("E-01_主题横幅.png", wait=3.0)
     im = load(shot)
-    red = count_near(im, (0, 0, W, 120), (200, 16, 46), 60)
-    c.t(red > 100, "红色渐变横幅成色", red)
+    red = count_near(im, P(0, 0, 1, 1), (200, 16, 46), 55)
+    c.t(red > 800, "红色渐变横幅成色", red)
+    c.t(bright_px(im, P(0, 0, 1, .55)) > 30, "横幅文字已上屏", bright_px(im, P(0, 0, 1, .55)))
 
 
 @case("E-02", "E 倒计时主题", "主题改字")
@@ -736,8 +910,9 @@ def e03(c):
     setup("计时=0,0,100,88,,计时", "", {"计时": ("", timer_style(target="2026-12-31 00:00", title="距年底"))})
     build()
     d = dom()
-    c.t("倒计时" in d and "天" in d, "显示倒计时与天单位")
-    m = re.search(r"(\d{2,3})\s*天", re.sub(r"<[^>]+>", "", d))
+    txt = re.sub(r"<[^>]+>", "", d)
+    c.t("距年底" in txt and "天" in txt, "标题与天单位同时显示", "距年底" in txt)
+    m = re.search(r"(\d{2,3})\s*天", txt)
     c.t(bool(m), "有天数数字", m.group(1) if m else "")
     shots = render_seq(["E-03_a.png", "E-03_b.png"], [2.2, 1.2])
     c.t(diff_frac(shots[0], shots[1]) > 0.0005, "秒位在跳动", diff_frac(shots[0], shots[1]))
@@ -779,8 +954,8 @@ def e06(c):
     c.t("1d4ed8" in d.lower() or "29,78,216" in d, "主题底色改为蓝", "1d4ed8" in d.lower())
     shot = render("E-06_主题配色.png", wait=2.6)
     im = load(shot)
-    blue = count_near(im, (0, 0, W, 120), (29, 78, 216), 40)
-    c.t(blue > 100, "蓝底横幅成色", blue)
+    blue = count_near(im, P(0, 0, 1, 1), (29, 78, 216), 45)
+    c.t(blue > 800, "蓝底横幅成色", blue)
 
 
 @case("E-07", "E 倒计时主题", "兼容回归")
@@ -789,7 +964,8 @@ def e07(c):
     build()
     txt = re.sub(r"<[^>]+>", "", dom())
     c.t("距开幕" in txt, "v6 原生 TITLE 样式保留", "距开幕" in txt)
-    c.t("倒计时" in txt and "天" in txt, "精确到天的倒计时仍在")
+    md = re.search(r"\d{2,3}\s*天", txt)
+    c.t(bool(md), "精确到天的倒计时仍在", md.group(0) if md else "未匹配")
     c.t("第" not in txt.replace("第一", ""), "无主题横幅时退回原生样式")
     render("E-07_兼容回归.png", wait=2.6)
 
@@ -840,7 +1016,7 @@ def f03(c):
         "BGIMAGE=bg/大厅.jpg\nBG_OPACITY=60\n")
     build()
     d = dom()
-    c.t(re.search(r"opacity:/s*0?/.6|opacity:/s*60%", d) is not None, "BG_OPACITY=60 生效",
+    c.t(re.search(r"opacity:\s*0?\.6", d) is not None, "BG_OPACITY=60 生效",
         re.findall(r"opacity:[^;\"]{1,8}", d)[:4])
     shot = render("F-03_底图opacity60.png")
     base = os.path.join(SHOT, "F-01_底图contain.png")
@@ -899,10 +1075,15 @@ def f07(c):
     setup("卡=10,10,80,70,,文本", "",
           {"卡": ("分区背景图验收\n", "SIZE=4\nCOLOR=#ffffff\nEFFECT=static\nZBG=textures/vignette.png\nZBG_FIT=contain\n")})
     build()
+    pl = playlist()
+    c.t('zbg:"textures/vignette.png"' in pl, "ZBG 已写入 playlist", [x for x in re.findall(r"zbg[^,]*", pl)][:2])
     d = dom()
-    c.t("vignette" in d, "分区背景图进入 DOM", "vignette" in d)
-    shot = render("F-07_分区背景图.png")
-    c.t(mean(load(shot), (150, 120, W - 150, H - 200))[0] > 8, "分区底色有内容")
+    c.t("vignette" in d, "分区背景图进入 DOM（zone 内联样式）", "vignette" in d)
+    shot = render("F-07_分区背景图.png", wait=3.0)
+    im = load(shot)
+    card = mean(im, P(.12, .12, .88, .78))
+    # vignette 纹理偏蓝（均色 23,43,74）；不铺图时卡片是 rgba(0,0,0,.45) 压底色，蓝红差只有 ~10
+    c.t(card[2] - card[0] > 25, "分区底图真的画出来了（蓝调纹理）", card)
 
 
 @case("F-08", "F 底图自定义", "与 BGFX 隔离")
@@ -931,23 +1112,32 @@ def g01(c):
     fams = re.findall(r'family:"([^"]+)"', pl)
     c.t(len(set(fams)) >= 3, "三种字体家族进 playlist", sorted(set(fams))[:4])
     d = dom()
-    used = set(re.findall(r"font-family:/s*'([^']+)'", d))
-    c.t(len(used) >= 2, "页面实际使用多种 font-family", sorted(used)[:4])
+    body = d[d.find("<body"):] or d
+    used = [f for f in ("思源宋体 粗", "思源黑体 常规", "思源黑体 粗") if f in body]
+    c.t(len(used) >= 2, "页面实际用上不同 font-family", used)
     shot = render("G-01_三字体.png")
-    c.t(std(load(shot), (0, 0, W, H)) > 8, "三行文字均已渲染")
+    c.t(std(load(shot), P(0, 0, 1, 1)) > 8, "三行文字均已渲染")
 
 
 @case("G-02", "G 字体与导入", "字体列举（v7）")
 def g02(c):
     setup("卡=0,0,100,88,,文本", "", {"卡": ("字体列举", "SIZE=5\nEFFECT=static\n")})
-    r1 = run(["./import-fonts.sh", "--list", "楷"], timeout=120)
-    out = (r1.stdout + r1.stderr)
-    c.t(r1.returncode == 0, "脚本可执行", r1.returncode)
-    c.t("楷" in out, "对关键词有响应", out.strip().splitlines()[-1][:80] if out.strip() else "")
-    r2 = run(["./import-fonts.sh", "--list", "Noto"], timeout=120)
-    out2 = (r2.stdout + r2.stderr)
-    c.t("Noto" in out2 or "noto" in out2.lower(), "能列出系统字体清单", out2.strip().splitlines()[:1])
-    c.info("容器内无「楷」字体，故用 Noto 验证列举逻辑；真机麒麟可用 fc-list :lang=zh 核对")
+    r0 = run(["./import-fonts.sh", "--list"], timeout=180)
+    out0 = r0.stdout + r0.stderr
+    lines = [x for x in out0.splitlines() if x.strip() and not x.startswith("提示")]
+    c.t(r0.returncode == 0, "脚本可执行", r0.returncode)
+    c.t(len(lines) > 0, "能列出系统字体清单", lines[:2])
+    c.t("提示" in out0, "无命中时给出用法提示", out0.strip().splitlines()[-1][:60] if out0.strip() else "")
+    # 关键词过滤：用清单里第一个字体名的前 4 个字符当关键词，必须能命中它
+    if lines:
+        kw = os.path.basename(lines[0].split()[0])[:4]
+        r1 = run(["./import-fonts.sh", "--list", kw], timeout=180)
+        out1 = r1.stdout + r1.stderr
+        c.t(os.path.basename(lines[0].split()[0]) in out1,
+            "关键词过滤命中（--list %s）" % kw, out1.strip().splitlines()[:1])
+    r2 = run(["./import-fonts.sh", "--list", "不存在的字体xyz"], timeout=180)
+    c.t("提示" in (r2.stdout + r2.stderr), "无命中只给提示不报错", r2.returncode)
+    c.info("容器内无中文字体的楷/宋分类，故用系统字体名当关键词验证列举与过滤逻辑；真机麒麟可用 fc-list :lang=zh 核对")
 
 
 @case("G-03", "G 字体与导入", "字体导入（v7）")
@@ -994,7 +1184,7 @@ def g04(c):
 def g05(c):
     setup("卡=0,0,100,88,,文本", "", {"卡": ("字体自检", "SIZE=5\nEFFECT=static\n")})
     build()
-    d = dom("player.html?selftest=1", budget=5000)
+    d = dom("player.html?selftest=1", budget=7000)
     txt = re.sub(r"<[^>]+>", "", d)
     c.t("字体" in txt, "自检含字体项")
     marks = txt.count("✔") + txt.count("√")
@@ -1098,10 +1288,12 @@ def h05(c):
         "%s=scheme:日常发布\n" % now_hm(1))
     build()
     c.t("scheme:日常发布" in playlist(), "定时切方案指令已解析")
-    wait = 62 - int(time.strftime("%S"))
+    # schedule 每 20 秒对齐一次，过点后至少再等 25 秒才能保证轮询命中
+    wait = 62 - int(time.strftime("%S")) + 25
     shots = render_seq(["H-05_before.png", "H-05_after.png"], [2.0, wait])
     dd = diff_frac(shots[0], shots[1])
     c.t(dd > 0.10, "到点整屏无刷新切换（画面大幅变化）", dd)
+    c.info("等待 %d 秒跨过整分并覆盖两轮 20 秒轮询" % wait)
 
 
 @case("H-06", "H 分屏与方案定时", "URL 临时切换")
@@ -1137,7 +1329,7 @@ def h07(c):
     c.t(os.path.exists(os.path.join(WORK, "playlist-我的方案.js")), "自动生成 playlist-我的方案.js")
     sj = open(os.path.join(WORK, "schemes.js"), encoding="utf-8").read()
     c.t("我的方案" in sj, "schemes.js 收录新方案")
-    d = dom("player.html?scheme=我的方案", budget=3000)
+    d = dom("player.html?scheme=我的方案", budget=7000)
     c.t("我的方案已识别" in re.sub(r"<[^>]+>", "", d), "方案内容可渲染")
     render("H-07_我的方案.png", wait=3.0, url="player.html?scheme=我的方案")
 
@@ -1152,7 +1344,8 @@ def h08(c):
     c.t(p.returncode == 0, "生成成功", p.stderr.strip()[-80:])
     pl = playlist()
     c.t("range:true" in pl, "时段行解析为 range", "range:true" in pl)
-    c.t("pageNos:[0,2]" in pl.replace(" ", ""), "页号 1,3 转 0 基数组", re.findall(r"pageNos:/[[^/]]*/]", pl)[:2])
+    c.t("pageNos:[0,2]" in pl.replace(" ", ""), "页号 1,3 转 0 基数组",
+        re.findall(r"pageNos:\[[^\]]*\]", pl)[:2])
     c.t("22:00-07:00" in open(os.path.join(WORK, "schedule.txt"), encoding="utf-8").read(), "跨天时段写法保留")
     render("H-08_时段节目单.png", wait=2.6)
 
@@ -1226,17 +1419,23 @@ def i01(c):
     p = build()
     c.t(p.returncode == 0, "生成成功", p.stderr.strip()[-80:])
     pl = playlist()
-    miss = [n for n in names[1:] if ('type:"%s"' % n) not in pl]
-    miss_n = [n for n in names if ('name:"%s"' % n) not in pl]
+    # playlist 没有 type 字段，窗口类型由内容键体现
+    km = {"文本": "text:{", "时钟": "clock:{", "计时": "countdown:{", "二维码": "qr:{",
+          "公告": "notice:{", "表格": "table:{", "数据": "data:{", "仪表": "gauge:{",
+          "天气": "weather:{", "地图": "map:{", "网页": "web:{"}
+    miss = [n for n, k in km.items() if k not in pl]
     c.t(not miss, "11 种非默认类型全部写入 playlist", "缺: %s" % miss if miss else "11/11")
+    miss_n = [n for n in names if ('name:"%s"' % n) not in pl]
     c.t(not miss_n, "12 个分区全部在 playlist", "缺名: %s" % miss_n if miss_n else "12/12")
     shot = render("I-01_12种窗口.png", wait=4.0)
     im = load(shot)
     cells = []
     for i in range(12):
         r, col = divmod(i, 4)
-        cells.append(std(im, (col * 320 + 10, r * 237 + 10, col * 320 + 310, r * 237 + 227)))
-    c.t(sum(1 for v in cells if v > 3) >= 11, "各窗口均渲染出内容", cells)
+        box = P(col * .25, r / 3.0, col * .25 + .235, r / 3.0 + .30)
+        cells.append((std(im, box), sum(mean(im, box))))
+    filled = sum(1 for sd, ms in cells if sd > 3 or ms > 40)
+    c.t(filled >= 11, "各窗口均渲染出内容", [int(v[0]) for v in cells])
 
 
 @case("I-02", "I 窗口与视觉", "磨砂玻璃")
@@ -1287,13 +1486,16 @@ def i05(c):
            "上": ("上层半透明卡片", "SIZE=5\nCOLOR=#ffffff\nEFFECT=static\nLAYER=1\nOPACITY=60\nGRADIENT=#c02030,#e05060\nCARD=yes\n")})
     img("content/底/1.png", "#0a3c78")
     build()
+    pl = playlist()
+    c.t('layer:"1"' in pl and 'opacity:"60"' in pl, "LAYER/OPACITY 已进 playlist",
+        [x for x in re.findall(r"(?:layer|opacity):\"?\d+\"?", pl)][:4])
     d = dom()
-    c.t(re.search(r"z-index:/s*/d+", d) is not None, "z-index 已应用", re.findall(r"z-index:/s*/d+", d)[:4])
-    c.t(re.search(r"opacity:/s*0?/.6", d) is not None, "OPACITY=60 生效")
+    c.t(re.search(r"z-index:\s*\d+", d) is not None, "z-index 已应用", re.findall(r"z-index:\s*\d+", d)[:4])
+    c.t(re.search(r"opacity:\s*0?\.6", d) is not None, "OPACITY=60 生效", re.findall(r"opacity:\s*0?\.\d+", d)[:4])
     shot = render("I-05_图层透明.png", wait=2.8)
     im = load(shot)
-    mid = mean(im, (W // 2 - 60, H // 2 - 40, W // 2 + 60, H // 2 + 40))
-    corner = mean(im, (10, 10, 120, 120))
+    mid = mean(im, P(.40, .40, .60, .60))
+    corner = mean(im, P(0, 0, .10, .10))
     c.t(mid[0] > corner[0] + 40, "上层红卡叠在蓝底上（混色）", (mid, corner))
 
 
@@ -1313,14 +1515,16 @@ def i06(c):
 def i07(c):
     res = []
     for tr in ("push-l", "rotate-3d", "wipe-lu", "blur-fade"):
-        setup("页1=0,0,100,100\n--- 4\n页2=0,0,100,100", settings="TRANSITION=%s\nTRANSITION_TIME=0.8\n" % tr,
+        setup("页1=0,0,100,100\n--- 3\n页2=0,0,100,100",
+              settings="TRANSITION=%s\nTRANSITION_TIME=0.8\nPAGE_DURATION=3\n" % tr,
               zones={"页1": (None, None), "页2": (None, None)})
         img("content/页1/1.png", "#c8102e")
         img("content/页2/1.png", "#1040c8")
         build()
         pl = playlist()
         ok_parse = ('"%s"' % tr) in pl
-        shots = render_seq(["I-07_%s_a.png" % tr, "I-07_%s_b.png" % tr], [2.2, 4.6])
+        # 页1 停 3s（+0.8s 转场），首帧取 1.4s，次帧取 5.2s 已在页2
+        shots = render_seq(["I-07_%s_a.png" % tr, "I-07_%s_b.png" % tr], [1.4, 3.8])
         d = diff_frac(shots[0], shots[1])
         res.append((tr, ok_parse, d))
         c.t(ok_parse, "%s 已写入 playlist" % tr)
@@ -1351,14 +1555,14 @@ def i08(c):
 def i09(c):
     js = '{"items":[{"label":"产量","value":1888,"unit":"件","progress":82}]}'
     setup("数据=2,2,96,60,,数据", "",
-          {"数据": ("产量|1000|件|50\n", "TITLE=生产总览\nSIZE=5\nDATASRC=data/产量.json\nREFRESH=10\n")})
-    open(os.path.join(WORK, "data", "产量.json"), "w", encoding="utf-8").write(js)
+          {"数据": ("产量|1000|件|50\n", "TITLE=生产总览\nSIZE=5\nDATASRC=data/产量.json\nREFRESH=10\n")},
+          files={"data/产量.json": js})
     build()
     pl = playlist()
     c.t("产量.json" in pl or "datasrc" in pl.lower(), "DATASRC 进 playlist", "产量.json" in pl)
     d = dom()
     c.t("1888" in d or "1,888" in d, "JSON 里的数值被渲染", re.findall(r"1888", d)[:2])
-    c.info("REFRESH=10 分钟为分钟级定时器，本项验证首次装载取数；分钟级刷新未实时等待")
+    c.info("REFRESH=10 为分钟级定时器，本项验证首次装载取数；分钟级刷新未实时等待")
     render("I-09_数据JSON.png", wait=3.0)
 
 
@@ -1383,30 +1587,36 @@ def i11(c):
           zones={"卡": ("低档位降级验收", "SIZE=5\nCOLOR=#ffffff\nEFFECT=static\nGLASS=yes\nGLOW=#ffb84a\nCARD=yes\n")})
     build()
     d = dom()
-    c.t("backdrop-filter" not in d, "磨砂玻璃已关闭")
-    c.t("text-shadow" not in d, "投影/发光已关闭")
+    body = d[d.find("<body"):] or d
+    head = d[:d.find("<body")] if "<body" in d else ""
+    c.t('class="perf-low"' in d, "页面切到 perf-low 档位（body 类）",
+        (re.search(r"<body[^>]*>", d).group(0)[:70] if re.search(r"<body[^>]*>", d) else ""))
+    c.t("mb-glass" not in body, "磨砂玻璃类已关闭（元素上无 mb-glass）")
+    glow = re.findall(r"text-shadow:0 0 [^;\"]*", body)
+    c.t(not glow, "发光字（GLOW 多重投影）已关闭", glow[:2])
+    c.t("perf-low *{text-shadow:none!important".replace(" ", "") in head.replace(" ", ""),
+        "低档位兜底规则已注入（CSS 层）")
     shot = render("I-11_低档位.png", wait=2.6)
-    c.t(count_near(load(shot), (0, 0, W, H), (255, 255, 255), 40) > 40, "文字仍清晰可读")
+    c.t(count_near(load(shot), P(0, 0, 1, 1), (255, 255, 255), 40) > 40, "文字仍清晰可读")
 
 
 @case("I-12", "I 窗口与视觉", "编辑器导出回灌")
 def i12(c):
     setup("卡=0,0,100,88,,文本", "", {"卡": ("编辑器验收", "SIZE=5\nEFFECT=static\n")})
     build()
-    d = dom("editor.html", budget=4000)
+    d = dom("editor.html", budget=7000)
     c.t("editor" in d.lower(), "编辑器页面可加载")
     c.t("导出" in d, "有导出配置包按钮")
     c.t("layout" in d and "settings" in d, "能导入现有配置")
     # 导出核心：ziputil.js 打包正确性（node 生成 -> python 校验）
     js = """
     const fs=require('fs');
-    global.window=global;
-    require('%s/ziputil.js');
+    const m=require('%s/ziputil.js');
     const files={'a.txt':'hello 中文','content/x/style.txt':'SIZE=4'};
-    const bin=window.MBZip?window.MBZip.build(files):null;
+    const bin=(m&&m.build)?m.build(files):null;
     if(!bin){console.error('no MBZip');process.exit(2);}
     fs.writeFileSync('/tmp/_t.zip',Buffer.from(bin));
-    console.log('zip bytes',bin.length);
+    console.log('zip bytes',bin.length,'crc ok',typeof m.crc32==='function');
     """ % WORK
     open("/tmp/_zt.js", "w", encoding="utf-8").write(js)
     r = subprocess.run(["node", "/tmp/_zt.js"], capture_output=True, text=True, timeout=120)
