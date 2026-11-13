@@ -1,0 +1,77 @@
+name: MediaBoard-v7-acceptance
+on:
+  push:
+    paths:
+      - "dist/**"
+      - "tools/**"
+      - ".github/workflows/mb_v7_acceptance.yml"
+  workflow_dispatch:
+
+jobs:
+  acceptance:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Prepare output dir
+        run: mkdir -p /tmp/out/shots && chmod -R 777 /tmp/out
+
+      - name: Run 70-case acceptance in Debian bookworm (arm64, real chromium + Xvfb)
+        run: |
+          docker run --rm -v "$GITHUB_WORKSPACE:/w" -v /tmp/out:/out debian:bookworm bash -c '
+            set -e
+            export DEBIAN_FRONTEND=noninteractive
+            apt-get update -qq >/dev/null
+            apt-get install -y -qq chromium imagemagick python3-pil xvfb fonts-noto-cjk \
+              nodejs >/dev/null 2>&1
+            chromium --version
+            # 容器内 root 身份需要 --no-sandbox；用 wrapper 让 start.sh 与测试脚本都生效
+            printf "#!/bin/sh\nexec /usr/bin/chromium --no-sandbox --disable-dev-shm-usage \"\$@\"\n" > /usr/local/bin/chromium
+            chmod +x /usr/local/bin/chromium
+            # 解包（tarball 根目录即 mediaboard/）
+            rm -rf /w/mediaboard
+            tar xzf /w/dist/mediaboard-kylin-arm64-v7.tar.gz -C /w
+            ls /w/mediaboard | head
+            # 中文渲染所需字体已装（fonts-noto-cjk）
+            export DISPLAY=:99
+            Xvfb :99 -screen 0 1280x720x24 >/dev/null 2>&1 &
+            sleep 2
+            xdpyinfo -display :99 >/dev/null || { echo "Xvfb failed"; exit 1; }
+            cd /w
+            MB_PKG=/w/mediaboard MB_SHOT=/out/shots MB_CHROME=chromium python3 /w/tools/v7_acceptance.py || true
+            echo "---- 结果汇总 ----"
+            cat /out/acceptance_results.tsv | head -80
+          '
+
+      - name: Upload acceptance artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mediaboard-v7-acceptance
+          path: |
+            /tmp/out/shots
+            /tmp/out/acceptance_results.json
+            /tmp/out/acceptance_results.tsv
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Show summary
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import json, os
+          p = "/tmp/out/acceptance_results.json"
+          if not os.path.exists(p):
+              print("no results")
+              raise SystemExit(0)
+          rs = json.load(open(p, encoding="utf-8"))
+          ok = sum(1 for r in rs if r["ok"])
+          print("PASS %d / %d" % (ok, len(rs)))
+          for r in rs:
+              if not r["ok"]:
+                  print("FAIL", r["id"], r["title"])
+                  for n in r["notes"]:
+                      if n.startswith("FAIL"):
+                          print("   ", n)
+          PY
