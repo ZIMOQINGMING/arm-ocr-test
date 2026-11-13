@@ -61,14 +61,13 @@ def r_step1(c):
     r = sh("bash stop.sh", timeout=60)
     time.sleep(10)          # 需求文档明确要求等待 10 秒
     after = B.pids()
-    ps = sh("pgrep -af 'chromium|start.sh' || true")
+    ps = sh("pgrep -af '^bash start.sh' || true")
     B.render_capture("A-05R_step1.png")
     c.t(bool(before), "启动后 chromium 在跑", before[:2])
     c.t("停止" in (r.stdout + r.stderr), "stop.sh 有明确反馈", (r.stdout + r.stderr).strip()[:60])
     c.t(os.path.exists(token()), ".stop 停机令牌已生成", os.path.exists(token()))
     c.t(not after, "stop.sh 后 10 秒无残留播放进程", after[:3] if after else "0")
-    c.t("start.sh" not in ps.stdout or "pgrep" in ps.stdout,
-        "看门狗不再重拉 start.sh", ps.stdout.strip()[:100])
+    c.t(not ps.stdout.strip(), "看门狗进程已退出（不再重拉）", ps.stdout.strip()[:100])
     B.stop_all()
 
 
@@ -228,10 +227,13 @@ def ops1(c):
     r2 = sh("bash status.sh")
     cap("OPS-01_status.sh.png", "$ bash status.sh (停止态)\n" + (r.stdout + r.stderr) +
         "\n$ bash status.sh (运行态)\n" + (r2.stdout + r2.stderr))
-    c.t(r.returncode == 0 and r2.returncode == 0, "两种状态下脚本均正常返回",
-        (r.returncode, r2.returncode))
+    # status.sh 约定：exit 0 = 正常态，exit 2 = 告警态（TONE=warn），两者都是有效返回
+    c.t(r.returncode in (0, 2) and r2.returncode in (0, 2),
+        "两种状态下脚本均正常返回（0=正常 / 2=告警态）", (r.returncode, r2.returncode))
+    c.t("状态:" in (r.stdout + r.stderr) and "状态:" in (r2.stdout + r2.stderr),
+        "状态查询输出三态判定", (r.stdout + r.stderr).strip()[:60])
     c.t(bool((r.stdout + r.stderr).strip()) and bool((r2.stdout + r2.stderr).strip()),
-        "状态查询有可读输出", (r.stdout + r.stderr).strip()[:60])
+        "状态查询有可读输出", True)
     clean_stop(p, 6)
 
 

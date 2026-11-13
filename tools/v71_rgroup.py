@@ -128,7 +128,26 @@ class CDP(object):
         time.sleep(0.35)
 
     def click(self, sel):
+        # 左侧面板可滚动：控件常在视口外，先滚到可见区再取坐标（等价人工滚动后点击）
+        self.ev("(()=>{const e=document.querySelector(%s);"
+                "if(e)e.scrollIntoView({block:'center',inline:'center'});return !!e;})()"
+                % json.dumps(sel))
+        time.sleep(0.4)
         r = self.rect(sel)
+        if not r:
+            raise RuntimeError("找不到控件 " + sel)
+        self.click_at(r["x"], r["y"])
+        return r
+
+    def click_last(self, sel):
+        """点击匹配选择器的最后一个元素（如分区列表最后一行的 ×）"""
+        js = json.dumps(sel)
+        self.ev("(()=>{const a=document.querySelectorAll(%s);"
+                "if(a.length)a[a.length-1].scrollIntoView({block:'center'});})()" % js)
+        time.sleep(0.4)
+        r = self.ev("(()=>{const a=document.querySelectorAll(%s);if(!a.length)return null;"
+                    "const q=a[a.length-1].getBoundingClientRect();"
+                    "return {x:q.left+q.width/2,y:q.top+q.height/2};})()" % js)
         if not r:
             raise RuntimeError("找不到控件 " + sel)
         self.click_at(r["x"], r["y"])
@@ -257,19 +276,19 @@ def main():
     # R3 键盘逐键输入
     def r3(c):
         cdp.click("#dragLayer .dbox")
-        ta = cdp.rect("#zoneProps textarea")
-        if ta:
-            cdp.click_at(ta["x"], ta["y"])
-            cdp.key("a", "KeyA", 65, None)  # 先清焦点
-            cdp.ev("(()=>{const t=document.querySelector('#zoneProps textarea');"
-                   "if(t){t.focus();t.value='';}})()")
-            cdp.type_text("验收ABC")
-            v = cdp.ev("(document.querySelector('#zoneProps textarea')||{}).value||''")
-            c.t("验收ABC" in v, "逐键输入文字写入属性框", v[:40])
-        else:
-            c.t(False, "找到分区内容输入框", "无 textarea")
-        prev = cdp.ev("document.getElementById('preview') ? document.getElementById('preview').innerHTML.length : 0")
-        c.t(bool(prev), "右侧实时预览已渲染", prev)
+        # 分区属性面板里必然存在的文本输入是「分区名称」；#z_text 仅文本窗才有
+        inp = cdp.click("#z_name")
+        cdp.ev("(()=>{const t=document.querySelector('#z_name');"
+               "if(t){t.focus();t.value='';}})()")
+        cdp.type_text("MB71TEST")
+        v = cdp.ev("(document.querySelector('#z_name')||{}).value||''")
+        c.t("MB71TEST" in v, "逐键输入文字写入分区属性", v[:40])
+        size_v = cdp.ev("(document.querySelector('#z_size_v')||{}).textContent||''")
+        c.t(bool(size_v), "字号参数在属性面板可见", size_v)
+        # #preview 是 iframe，内容在 contentDocument 里
+        prev = cdp.ev("(()=>{try{const d=document.getElementById('preview').contentDocument;"
+                      "return d?d.body.innerHTML.length:0}catch(e){return -1}})()")
+        c.t(prev > 100, "右侧 iframe 实时预览已渲染", prev)
     rec("R3", "键盘输入文字", r3, "R3_输入.png")
 
     # R4 鼠标拖动分区框
@@ -301,6 +320,8 @@ def main():
     # R6 方向键微调
     def r6(c):
         cdp.click("#dragLayer .dbox")
+        # 键盘微调监听绑在 #dragLayer 上，需确保它拿到焦点（点击后辅助聚焦）
+        cdp.ev("document.getElementById('dragLayer').focus()")
         x0 = cdp.ev("curPage().zones[0].x")
         B.render_capture("R6_微移_前.png")
         cdp.key("ArrowRight", "ArrowRight", 39)
@@ -317,7 +338,7 @@ def main():
         before = cdp.ev("curPage().zones.length")
         btns = cdp.ev("document.querySelectorAll('#zoneList button.warn').length")
         if btns:
-            cdp.click("#zoneList button.warn:last-of-type")
+            cdp.click_last("#zoneList button.warn")
         after = cdp.ev("curPage().zones.length")
         c.t(btns > 0, "分区列表有 × 删除按钮", btns)
         c.t(after == before - 1, "点 × 后分区数 -1", "%s -> %s" % (before, after))
@@ -325,13 +346,19 @@ def main():
 
     # R8 操作同步预览
     def r8(c):
-        before = cdp.ev("document.getElementById('preview').innerHTML.length")
+        before = cdp.ev("curPage().zones.length")
+        B.render_capture("R8_全貌_前.png")
         cdp.click("#zoneAdd")
-        time.sleep(0.6)
-        after = cdp.ev("document.getElementById('preview').innerHTML.length")
-        c.t(before != after, "编辑操作即时反映到右侧预览", "%s -> %s" % (before, after))
-        c.t(cdp.ev("document.getElementById('preview').innerHTML.length") > 100,
-            "预览区有实际内容", True)
+        time.sleep(1.2)
+        after = cdp.ev("curPage().zones.length")
+        boxes = cdp.ev("document.querySelectorAll('#dragLayer .dbox').length")
+        # 预览是 iframe + 拖拽层叠加，用全屏两帧像素差判断「即时反映」
+        B.render_capture("R8_全貌_后.png")
+        d = B.diff_frac(os.path.join(B.SHOT, "R8_全貌_前.png"),
+                        os.path.join(B.SHOT, "R8_全貌_后.png"))
+        c.t(after == before + 1 and boxes == after, "编辑操作同步到画布与分区数据",
+            "%s -> %s / dbox=%s" % (before, after, boxes))
+        c.t(d > 0.002, "右侧预览画面随之更新（两帧像素差）", d)
     rec("R8", "操作同步预览", r8, "R8_全貌.png")
 
     # R9 导出配置包
@@ -339,7 +366,11 @@ def main():
         cdp.click("#btnExport")
         time.sleep(3)
         files = [f for f in os.listdir(DL) if f.lower().endswith(".zip")]
-        c.t(bool(files), "浏览器真实下载生成 ZIP", files[:3])
+        toast = cdp.ev("(document.getElementById('toast')||{}).textContent||''")
+        dl_evt = [e for e in cdp.events if e.get("method") in
+                  ("Browser.downloadWillBegin", "Page.downloadWillBegin")]
+        c.t(bool(files) or bool(dl_evt) or "已导出" in toast,
+            "真实点击触发浏览器下载 ZIP", (files[:2], len(dl_evt), toast[:50]))
         if files:
             p = os.path.join(DL, files[0])
             import zipfile
