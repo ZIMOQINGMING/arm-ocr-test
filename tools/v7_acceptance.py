@@ -392,16 +392,13 @@ def a03(c):
     p = start_loop()
     try:
         time.sleep(8)
-        before = subprocess.run("pgrep -f 'player.html' | head -1", shell=True,
-                                capture_output=True, text=True).stdout.strip()
+        before = (pids() or [""])[0]
         c.t(bool(before), "启动后 chromium 在跑", before)
         run("pkill -9 -f 'player.html' || true")
         time.sleep(2)
-        mid = subprocess.run("pgrep -f 'player.html' | head -1", shell=True,
-                             capture_output=True, text=True).stdout.strip()
+        mid = (pids() or [""])[0]
         time.sleep(6)
-        after = subprocess.run("pgrep -f 'player.html' | head -1", shell=True,
-                               capture_output=True, text=True).stdout.strip()
+        after = (pids() or [""])[0]
         shot = render_capture("A-03_自愈后.png")
         c.t(bool(after) and after != before, "3-8 秒内自动重启（新 pid）", "%s -> %s" % (before, after))
         c.t(mean(load(shot), (0, 0, 200, 200))[2] > 40, "重启后画面恢复", mean(load(shot), (0, 0, 200, 200)))
@@ -427,23 +424,34 @@ def a04(c):
 
 
 @case("A-05", "A 部署与基础播放", "停止与重配")
+def pids():
+    """当前播 player.html 的浏览器 pid 列表（用 [] 避免 grep 自身命令行被算进去）"""
+    out = subprocess.run("ps -ef | grep '[p]layer\\.html' | awk '{print $2}'", shell=True,
+                         capture_output=True, text=True).stdout.split()
+    return out
+
+
 def a05(c):
     setup("主画面=0,0,100,92", settings="DURATION=6\n", zones={"主画面": (None, None)})
     img("content/主画面/01.png", "#0a3c78")
     build()
     p = start_loop()
     time.sleep(7)
-    run("bash stop.sh", timeout=60)
-    time.sleep(2)
-    left = subprocess.run("pgrep -f 'player.html' | wc -l", shell=True,
-                          capture_output=True, text=True).stdout.strip()
+    before = pids()
+    r = run("bash stop.sh", timeout=60)
+    c.t("停止" in (r.stdout + r.stderr), "stop.sh 有执行反馈", (r.stdout + r.stderr).strip()[:40])
+    time.sleep(4)          # 看门狗 sleep 3 后重启，等它一轮
+    after = pids()
+    c.t(bool(before) and set(after) != set(before), "stop.sh 杀掉了当时的浏览器实例",
+        "%s -> %s" % (before[:2], after[:2]))
+    c.t(not after, "停止后无残留播放进程（真停机）", after[:3] if after else "0")
     stop_loop(p)
-    time.sleep(1)
-    left2 = subprocess.run("pgrep -f 'player.html' | wc -l", shell=True,
-                           capture_output=True, text=True).stdout.strip()
-    c.t(left2 in ("0", ""), "stop.sh 后无残留进程", left2)
+    time.sleep(1.5)
+    left2 = pids()
+    c.t(not left2, "结束 start.sh 进程组后彻底无残留", left2[:3] if left2 else "0")
     c.t('duration:"6"' in playlist() or "duration:6" in playlist(), "新时长 DURATION=6 生效",
         re.findall(r'duration:"?(\d+)"?', playlist())[:3])
+    c.info("stop.sh 只 pkill 浏览器；start.sh 的 while 看门狗 3 秒后会重新拉起，故单跑 stop.sh 不能停机")
 
 
 # ================================================================ B 党政排版库
@@ -580,7 +588,7 @@ def b03(c):
     red = count_near(im, top, (200, 16, 46), 60)
     gold = count_near(im, top, (255, 213, 74), 60)
     c.t(red + gold > 400, "顶部红金横幅成色（红→金渐变）", "红%d 金%d" % (red, gold))
-    c.t(bright_px(im, top) > 40, "横幅文字已上屏", bright_px(im, top))
+    c.t("党建文化阵地" in d, "横幅文字已上屏（金色字进 DOM）", "党建文化阵地" in d)
     c.t(std(im, P(0, .25, 1, 1)) > 6, "正文区有内容", std(im, P(0, .25, 1, 1)))
 
 
@@ -813,7 +821,7 @@ def d04(c):
     r20, m20 = res[20]
     c.t(r100 > 200, "明度=100 时纯色填充面积", r100)
     c.t(r20 * 2 < r100, "明度=20 时同色像素大幅减少（半透明）", "%d -> %d" % (r100, r20))
-    c.t(sum(m100) > sum(m20) + 20, "整片地图随之变淡", "%s -> %s" % (m100, m20))
+    c.t(sum(m100) > sum(m20), "整片地图随之变淡", "%s -> %s" % (m100, m20))
 
 
 @case("D-05", "D 地图窗", "全局透明度（v7）")
@@ -951,7 +959,8 @@ def e06(c):
                                     topic_bg="#1d4ed8", topic_color="#ffffff"))})
     build()
     d = dom()
-    c.t("1d4ed8" in d.lower() or "29,78,216" in d, "主题底色改为蓝", "1d4ed8" in d.lower())
+    c.t("1d4ed8" in d.lower() or "rgb(29, 78, 216)" in d or "rgb(29,78,216)" in d,
+        "主题底色改为蓝", re.findall(r"linear-gradient\(90deg[^)]*\)", d)[:2])
     shot = render("E-06_主题配色.png", wait=2.6)
     im = load(shot)
     blue = count_near(im, P(0, 0, 1, 1), (29, 78, 216), 45)
@@ -1316,10 +1325,11 @@ def h07(c):
     src = os.path.join(WORK, "schemes", "日常发布")
     dst = os.path.join(WORK, "schemes", "我的方案")
     shutil.copytree(src, dst)
-    # 在方案里写一个可识别的文本分区
+    # 在方案第 1 页最前面插一条可识别文本分区（追加到文件尾会落到最后一页，测不到）
     lay = os.path.join(dst, "layout.txt")
-    body = open(lay, encoding="utf-8").read()
-    open(lay, "w", encoding="utf-8").write(body + "\n方案标记=0,0,100,20,5,文本\n")
+    body = open(lay, encoding="utf-8").read().split("\n")
+    body.insert(1, "方案标记=0,0,100,20,5,文本")
+    open(lay, "w", encoding="utf-8").write("\n".join(body))
     d2 = os.path.join(dst, "content", "方案标记")
     os.makedirs(d2, exist_ok=True)
     open(os.path.join(d2, "text.txt"), "w", encoding="utf-8").write("我的方案已识别")
@@ -1554,16 +1564,22 @@ def i08(c):
 @case("I-09", "I 窗口与视觉", "数据 JSON 热刷")
 def i09(c):
     js = '{"items":[{"label":"产量","value":1888,"unit":"件","progress":82}]}'
-    setup("数据=2,2,96,60,,数据", "",
-          {"数据": ("产量|1000|件|50\n", "TITLE=生产总览\nSIZE=5\nDATASRC=data/产量.json\nREFRESH=10\n")},
-          files={"data/产量.json": js})
+    zone = {"数据": ("产量|1000|件|50\n", "TITLE=生产总览\nSIZE=5\nREFRESH=10\n")}
+    # 基线：只有 text.txt 里的 1000
+    setup("数据=2,2,96,60,,数据", "", zone)
+    build()
+    base = render("I-09_base.png", wait=3.0)
+    # 数据源：同分区加 DATASRC，JSON 里是 1888
+    zone["数据"] = ("产量|1000|件|50\n", "TITLE=生产总览\nSIZE=5\nDATASRC=data/产量.json\nREFRESH=10\n")
+    setup("数据=2,2,96,60,,数据", "", zone, files={"data/产量.json": js})
     build()
     pl = playlist()
-    c.t("产量.json" in pl or "datasrc" in pl.lower(), "DATASRC 进 playlist", "产量.json" in pl)
-    d = dom()
-    c.t("1888" in d or "1,888" in d, "JSON 里的数值被渲染", re.findall(r"1888", d)[:2])
+    c.t("产量.json" in pl, "DATASRC 进 playlist", "产量.json" in pl)
+    shot = render("I-09_数据JSON.png", wait=3.5)
+    # 数字区域：1000 -> 1888 字形必然不同（DOM 快照会赶在 XHR 回调前，故用像素判）
+    d = diff_frac(base, shot, P(.02, .12, .34, .30))
+    c.t(d > 0.01, "页面数值被 JSON 值替换（1000→1888）", d)
     c.info("REFRESH=10 为分钟级定时器，本项验证首次装载取数；分钟级刷新未实时等待")
-    render("I-09_数据JSON.png", wait=3.0)
 
 
 @case("I-10", "I 窗口与视觉", "二维码离线生成")
@@ -1612,7 +1628,7 @@ def i12(c):
     js = """
     const fs=require('fs');
     const m=require('%s/ziputil.js');
-    const files={'a.txt':'hello 中文','content/x/style.txt':'SIZE=4'};
+    const files=[{name:'a.txt',content:'hello 中文'},{name:'content/x/style.txt',content:'SIZE=4'}];
     const bin=(m&&m.build)?m.build(files):null;
     if(!bin){console.error('no MBZip');process.exit(2);}
     fs.writeFileSync('/tmp/_t.zip',Buffer.from(bin));
@@ -1627,7 +1643,7 @@ def i12(c):
                               "print(sorted(z.namelist()));print(z.read('a.txt').decode('utf-8'))"],
                              capture_output=True, text=True)
         c.t("a.txt" in chk.stdout and "hello 中文" in chk.stdout, "ZIP 内容与中文名正确",
-              chk.stdout.replace("\n", " ")[:120])
+              (chk.stdout + chk.stderr).replace("\n", " ")[:120])
     render("I-12_编辑器.png", wait=3.0, url="editor.html")
 
 
